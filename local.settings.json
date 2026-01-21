@@ -1,0 +1,17 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    
+    "TWITTER_API_KEY": "",
+    "TWITTER_API_SECRET": "",
+    "TWITTER_ACCESS_TOKEN": "",
+    "TWITTER_ACCESS_TOKEN_SECRET": "",
+    
+    "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+    "STATE_CONTAINER_NAME": "release-state",
+    
+    "RSS_FEED_URL": "https://github.com/github/copilot-cli/releases.atom"
+  }
+}

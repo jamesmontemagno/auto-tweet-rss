@@ -1,0 +1,145 @@
+# Auto Tweet RSS
+
+An Azure Function that monitors the GitHub Copilot CLI releases RSS feed and automatically tweets about new stable releases.
+
+## Features
+
+- Polls the GitHub Copilot CLI Atom feed every 15 minutes
+- Filters out pre-release versions (those with `-N` suffix or containing "Pre-release")
+- Formats tweets with emoji-enhanced bullet points for features
+- Posts to Twitter/X using OAuth 1.0a authentication
+- Tracks state in Azure Blob Storage to prevent duplicate tweets
+- Respects Twitter's 280 character limit with smart truncation
+
+## Tweet Format
+
+```
+🚀 Copilot CLI v0.0.388 released!
+
+✨ Add /review command for code reviews
+⚡ Improved response time
+🐛 Fixed memory leak
+
+https://github.com/github/copilot-cli/releases/tag/v0.0.388
+
+#GitHubCopilotCLI
+```
+
+## Prerequisites
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Azure Functions Core Tools v4](https://docs.microsoft.com/azure/azure-functions/functions-run-local)
+- [Azurite](https://docs.microsoft.com/azure/storage/common/storage-use-azurite) (for local development) or an Azure Storage account
+- Twitter Developer Account with OAuth 1.0a credentials
+
+## Configuration
+
+### local.settings.json
+
+Create a `local.settings.json` file in the project root (this file is git-ignored):
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    
+    "TWITTER_API_KEY": "<your-consumer-key>",
+    "TWITTER_API_SECRET": "<your-consumer-secret>",
+    "TWITTER_ACCESS_TOKEN": "<your-access-token>",
+    "TWITTER_ACCESS_TOKEN_SECRET": "<your-access-token-secret>",
+    
+    "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+    "STATE_CONTAINER_NAME": "release-state",
+    
+    "RSS_FEED_URL": "https://github.com/github/copilot-cli/releases.atom"
+  }
+}
+```
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `AzureWebJobsStorage` | Azure Storage connection for Functions runtime | Yes |
+| `FUNCTIONS_WORKER_RUNTIME` | Must be `dotnet-isolated` | Yes |
+| `TWITTER_API_KEY` | Twitter OAuth 1.0a Consumer Key (API Key) | Yes |
+| `TWITTER_API_SECRET` | Twitter OAuth 1.0a Consumer Secret (API Secret) | Yes |
+| `TWITTER_ACCESS_TOKEN` | Twitter OAuth 1.0a Access Token | Yes |
+| `TWITTER_ACCESS_TOKEN_SECRET` | Twitter OAuth 1.0a Access Token Secret | Yes |
+| `AZURE_STORAGE_CONNECTION_STRING` | Connection string for state tracking blob storage | Yes |
+| `STATE_CONTAINER_NAME` | Blob container name for state file | No (default: `release-state`) |
+| `RSS_FEED_URL` | Atom feed URL to monitor | No (default: Copilot CLI releases) |
+
+### Getting Twitter OAuth 1.0a Credentials
+
+1. Go to [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
+2. Create a new App or use an existing one
+3. Navigate to "Keys and tokens"
+4. Generate/copy:
+   - API Key → `TWITTER_API_KEY`
+   - API Secret → `TWITTER_API_SECRET`
+   - Access Token → `TWITTER_ACCESS_TOKEN`
+   - Access Token Secret → `TWITTER_ACCESS_TOKEN_SECRET`
+5. Ensure your app has **Read and Write** permissions
+
+## Local Development
+
+1. **Start Azurite** (Azure Storage emulator):
+   ```bash
+   azurite --silent --location ./azurite --debug ./azurite/debug.log
+   ```
+
+2. **Fill in credentials** in `local.settings.json`
+
+3. **Run the function**:
+   ```bash
+   func start
+   ```
+   
+   Or press F5 in VS Code with the Azure Functions extension.
+
+4. The timer trigger runs every 15 minutes. To test immediately, you can trigger it manually via the Azure Functions Core Tools admin endpoint.
+
+## Project Structure
+
+```
+auto-tweet-rss/
+├── AutoTweetRss.csproj           # .NET 10 project file
+├── Program.cs                     # Dependency injection setup
+├── host.json                      # Azure Functions host configuration
+├── local.settings.json            # Local environment variables (git-ignored)
+├── Functions/
+│   └── ReleaseNotifierFunction.cs # Timer trigger (every 15 min)
+└── Services/
+    ├── RssFeedService.cs          # Fetches and filters RSS feed
+    ├── OAuth1Helper.cs            # HMAC-SHA1 signature for Twitter
+    ├── TwitterApiClient.cs        # Direct HTTP calls to Twitter API v2
+    ├── TweetFormatterService.cs   # Formats tweets with emojis
+    └── StateTrackingService.cs    # Blob storage for last processed ID
+```
+
+## Deployment to Azure
+
+1. Create an Azure Function App (Linux, .NET 10 Isolated)
+2. Create an Azure Storage Account
+3. Configure Application Settings with the environment variables above
+4. Deploy using:
+   ```bash
+   func azure functionapp publish <your-function-app-name>
+   ```
+
+## How It Works
+
+1. **Timer Trigger**: Runs every 15 minutes (`0 */15 * * * *`)
+2. **Fetch Feed**: Downloads and parses the Atom feed
+3. **Filter**: Removes entries with pre-release patterns (`-0`, `-1`, etc.) or "Pre-release" in content
+4. **Check State**: Compares against last processed entry ID stored in blob storage
+5. **Format**: Creates tweet with emojis, extracted features, URL, and hashtag
+6. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
+7. **Update State**: Saves the processed entry ID to prevent duplicates
+
+## License
+
+MIT
