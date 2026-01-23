@@ -3,7 +3,7 @@ using Azure.AI.OpenAI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
-using System.Web;
+using System.Net;
 
 namespace AutoTweetRss.Services;
 
@@ -14,6 +14,11 @@ public class ReleaseSummarizerService
 {
     private readonly IChatClient _chatClient;
     private readonly ILogger<ReleaseSummarizerService> _logger;
+    
+    // Compiled regex patterns for better performance
+    private static readonly Regex ListItemPattern = new(@"<li[^>]*>(.*?)</li>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex HtmlTagPattern = new(@"<[^>]+>", RegexOptions.Compiled);
+    private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
 
     public ReleaseSummarizerService(
         ILogger<ReleaseSummarizerService> logger,
@@ -101,11 +106,10 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         try
         {
             // Decode HTML entities
-            var decoded = HttpUtility.HtmlDecode(htmlContent);
+            var decoded = WebUtility.HtmlDecode(htmlContent);
             
             // Extract list items from HTML
-            var listItemPattern = @"<li[^>]*>(.*?)</li>";
-            var matches = Regex.Matches(decoded, listItemPattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            var matches = ListItemPattern.Matches(decoded);
             
             var count = 0;
             foreach (Match match in matches)
@@ -120,9 +124,12 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
             
             return count;
         }
-        catch
+        catch (Exception ex)
         {
             // If parsing fails, return 0 to avoid breaking the summary
+            // Exception is not logged here as it's a non-critical operation
+            // and we gracefully fall back to 0
+            _ = ex; // Explicitly acknowledge exception for code analysis
             return 0;
         }
     }
@@ -130,9 +137,9 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
     private static string StripHtml(string html)
     {
         // Remove HTML tags
-        var withoutTags = Regex.Replace(html, @"<[^>]+>", " ");
+        var withoutTags = HtmlTagPattern.Replace(html, " ");
         // Normalize whitespace
-        var normalized = Regex.Replace(withoutTags, @"\s+", " ");
+        var normalized = WhitespacePattern.Replace(withoutTags, " ");
         return normalized.Trim();
     }
 
