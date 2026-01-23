@@ -110,7 +110,7 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
             
             // Check if we're past the "New Contributors" section - don't count those items
             var newContributorsIndex = decoded.IndexOf("New Contributors", StringComparison.OrdinalIgnoreCase);
-            var contentToCount = newContributorsIndex > 0 ? decoded[..newContributorsIndex] : decoded;
+            var contentToCount = newContributorsIndex >= 0 ? decoded[..newContributorsIndex] : decoded;
             
             // Extract list items from HTML
             var matches = ListItemPattern.Matches(contentToCount);
