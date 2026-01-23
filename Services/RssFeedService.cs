@@ -16,7 +16,7 @@ public class RssFeedService
         _httpClient = httpClientFactory.CreateClient();
     }
 
-    public async Task<List<ReleaseEntry>> GetNonPreReleaseEntriesAsync(string feedUrl)
+    public async Task<List<ReleaseEntry>> GetNonPreReleaseEntriesAsync(string feedUrl, bool isSdkFeed = false)
     {
         var entries = new List<ReleaseEntry>();
 
@@ -36,13 +36,31 @@ public class RssFeedService
                 var id = item.Id ?? string.Empty;
                 var updated = item.LastUpdatedTime;
 
-                // Filter out pre-releases:
-                // 1. Title matches pattern like "0.0.389-0" (has hyphen followed by digits)
-                // 2. Content contains "Pre-release"
-                if (IsPreRelease(title, content))
+                // Filter out pre-releases and submodule releases for SDK
+                if (isSdkFeed)
                 {
-                    _logger.LogDebug("Skipping pre-release: {Title}", title);
-                    continue;
+                    // Skip Go submodule releases like "go/v0.1.16"
+                    if (title.StartsWith("go/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogDebug("Skipping Go submodule release: {Title}", title);
+                        continue;
+                    }
+                    
+                    // Skip preview releases like "v0.1.16-preview.0"
+                    if (IsPreRelease(title, content) || title.Contains("-preview", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogDebug("Skipping pre-release: {Title}", title);
+                        continue;
+                    }
+                }
+                else
+                {
+                    // Original CLI filtering
+                    if (IsPreRelease(title, content))
+                    {
+                        _logger.LogDebug("Skipping pre-release: {Title}", title);
+                        continue;
+                    }
                 }
 
                 entries.Add(new ReleaseEntry
