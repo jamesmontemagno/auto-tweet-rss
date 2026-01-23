@@ -75,7 +75,8 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     
     "AI_ENDPOINT": "<your-azure-openai-endpoint>",
     "AI_API_KEY": "<your-azure-openai-api-key>",
-    "AI_MODEL": "gpt-4o-nano"
+    "AI_MODEL": "gpt-5-nano",
+    "ENABLE_AI_SUMMARIES": "false"
   }
 }
 ```
@@ -93,10 +94,10 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AZURE_STORAGE_CONNECTION_STRING` | Connection string for state tracking blob storage | Yes |
 | `STATE_CONTAINER_NAME` | Blob container name for state file | No (default: `release-state`) |
 | `RSS_FEED_URL` | Atom feed URL to monitor | No (default: Copilot CLI releases) |
-| `ENABLE_TIMERS` | Enable automatic timer-based checks | No (default: `false`) |
 | `AI_ENDPOINT` | Azure OpenAI endpoint URL (e.g., `https://your-resource.openai.azure.com/`) | No (if not set, falls back to manual extraction) |
 | `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
 | `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-5-nano`) |
+| `ENABLE_AI_SUMMARIES` | Enable AI-powered summaries for timer functions | No (default: `false`) |
 
 ### Getting Twitter OAuth 1.0a Credentials
 
@@ -141,14 +142,15 @@ To enable AI-powered summaries:
    
    Or press F5 in VS Code with the Azure Functions extension.
 
-4. **Timer configuration**: 
-   - By default, timers are **disabled** (`ENABLE_TIMERS=false`) to prevent automatic tweets during development
-   - To enable timers, set `ENABLE_TIMERS=true` in your `local.settings.json`
-   - When enabled, timers run every 15 minutes
+4. **AI Summaries**: 
+   - Timer functions always run every 15 minutes (automatic)
+   - By default, AI summaries are **disabled** for timer functions (`ENABLE_AI_SUMMARIES=false`)
+   - When disabled, timer functions use classic HTML parsing
+   - To enable AI summaries for timer functions, set `ENABLE_AI_SUMMARIES=true` and configure AI endpoint/key
 
 5. **Testing the AI summary** without tweeting:
    
-   Use the test endpoint to preview AI-generated summaries:
+   Use the test endpoint to preview AI-generated summaries (always uses AI if configured):
    
    ```bash
    # Test CLI release summary
@@ -199,8 +201,8 @@ auto-tweet-rss/
 2. **Fetch Feed**: Downloads and parses the CLI Atom feed from https://github.com/github/copilot-cli/releases.atom
 3. **Filter**: Removes entries with pre-release patterns (`-0`, `-1`, etc.) or "Pre-release" in content
 4. **Check State**: Compares against last processed entry ID stored in blob storage (`last-processed-id.txt`)
-5. **AI Summary** (if configured): Sends release content to Azure OpenAI for intelligent summarization with emojis
-6. **Format**: Creates tweet with AI-generated summary or fallback to manual extraction, URL, and hashtag `#GitHubCopilotCLI`
+5. **AI Summary** (if `ENABLE_AI_SUMMARIES=true`): Sends release content to Azure OpenAI for intelligent summarization with emojis, otherwise uses classic HTML parsing
+6. **Format**: Creates tweet with AI-generated summary or manual extraction, URL, and hashtag `#GitHubCopilotCLI`
 7. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
 8. **Update State**: Saves the processed entry ID to prevent duplicates
 
@@ -210,10 +212,19 @@ auto-tweet-rss/
 2. **Fetch Feed**: Downloads and parses the SDK Atom feed from https://github.com/github/copilot-sdk/releases.atom
 3. **Filter**: Removes entries with preview releases (`-preview.X`) and Go submodule releases (`go/vX.X.X`)
 4. **Check State**: Compares against last processed entry ID stored in blob storage (`sdk-last-processed-id.txt`)
-5. **AI Summary** (if configured): Sends release content to Azure OpenAI for intelligent summarization with emojis
-6. **Format**: Creates tweet with AI-generated summary or fallback to manual extraction, and hashtag `#GitHubCopilotSDK`
+5. **AI Summary** (if `ENABLE_AI_SUMMARIES=true`): Sends release content to Azure OpenAI for intelligent summarization with emojis, otherwise uses classic HTML parsing
+6. **Format**: Creates tweet with AI-generated summary or manual extraction, and hashtag `#GitHubCopilotSDK`
 7. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
 8. **Update State**: Saves the processed entry ID to prevent duplicates
+
+### TestSummary Function (HTTP Endpoint)
+
+1. **HTTP Request**: GET `/api/test-summary/{cli|sdk}`
+2. **Fetch Feed**: Downloads and parses the appropriate Atom feed
+3. **Get Latest**: Retrieves the most recent stable release
+4. **AI Summary** (always enabled): Uses Azure OpenAI to generate summary regardless of `ENABLE_AI_SUMMARIES` setting
+5. **Format**: Creates tweet format with AI-generated summary
+6. **Return**: Returns formatted tweet preview without posting to Twitter
 
 ## License
 

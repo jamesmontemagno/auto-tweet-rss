@@ -73,15 +73,15 @@ public class TestSummaryFunction
             
             _logger.LogInformation("Processing release: {Title}", latestEntry.Title);
 
-            // Generate the tweet
+            // Generate the tweet (always use AI for test endpoint)
             string tweet;
             if (isSdkFeed)
             {
-                tweet = await _tweetFormatterService.FormatSdkTweetAsync(latestEntry);
+                tweet = await _tweetFormatterService.FormatSdkTweetAsync(latestEntry, useAi: true);
             }
             else
             {
-                tweet = await _tweetFormatterService.FormatTweetAsync(latestEntry);
+                tweet = await _tweetFormatterService.FormatTweetAsync(latestEntry, useAi: true);
             }
 
             // Return the formatted tweet

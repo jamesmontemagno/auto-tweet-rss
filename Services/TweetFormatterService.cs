@@ -29,10 +29,13 @@ public class TweetFormatterService
         _releaseSummarizer = releaseSummarizer;
     }
 
-    public async Task<string> FormatTweetAsync(ReleaseEntry entry)
+    public async Task<string> FormatTweetAsync(ReleaseEntry entry, bool useAi = false)
     {
-        // Try to use AI summarization if available
-        if (_releaseSummarizer != null)
+        // Determine if we should use AI
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        
+        // Try to use AI summarization if available and enabled
+        if (shouldUseAi && _releaseSummarizer != null)
         {
             try
             {
@@ -46,6 +49,12 @@ public class TweetFormatterService
 
         // Fall back to manual extraction
         return FormatTweet(entry);
+    }
+
+    private bool ShouldUseAiFromEnvironment()
+    {
+        var enableAi = Environment.GetEnvironmentVariable("ENABLE_AI_SUMMARIES");
+        return !string.IsNullOrEmpty(enableAi) && bool.Parse(enableAi);
     }
 
     private async Task<string> FormatTweetWithAiAsync(ReleaseEntry entry)
@@ -107,10 +116,13 @@ public class TweetFormatterService
         return tweet;
     }
 
-    public async Task<string> FormatSdkTweetAsync(ReleaseEntry entry)
+    public async Task<string> FormatSdkTweetAsync(ReleaseEntry entry, bool useAi = false)
     {
-        // Try to use AI summarization if available
-        if (_releaseSummarizer != null)
+        // Determine if we should use AI
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        
+        // Try to use AI summarization if available and enabled
+        if (shouldUseAi && _releaseSummarizer != null)
         {
             try
             {
