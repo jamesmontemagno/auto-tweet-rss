@@ -1,0 +1,57 @@
+name: CI Build Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '10.0'
+  CONFIGURATION: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
+
+      - name: Check for build warnings
+        run: |
+          if dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore 2>&1 | grep -i "warning"; then
+            echo "⚠️ Build warnings detected"
+            exit 0
+          else
+            echo "✅ No build warnings"
+          fi
+
+      - name: Verify output artifacts
+        run: |
+          if [ -d "bin/${{ env.CONFIGURATION }}/net10.0" ]; then
+            echo "✅ Build artifacts created successfully"
+            ls -la bin/${{ env.CONFIGURATION }}/net10.0
+          else
+            echo "❌ Build artifacts not found"
+            exit 1
+          fi
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Configuration:** ${{ env.CONFIGURATION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **.NET Version:** ${{ env.DOTNET_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

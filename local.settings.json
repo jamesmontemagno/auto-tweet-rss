@@ -12,6 +12,11 @@
     "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
     "STATE_CONTAINER_NAME": "release-state",
     
-    "RSS_FEED_URL": "https://github.com/github/copilot-cli/releases.atom"
+    "RSS_FEED_URL": "https://github.com/github/copilot-cli/releases.atom",
+    
+    "AI_ENDPOINT": "",
+    "AI_API_KEY": "",
+    "AI_MODEL": "gpt-5-nano",
+    "ENABLE_AI_SUMMARIES": "false"
   }
 }
