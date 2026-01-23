@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AutoTweetRss.Services;
 
-public class TweetFormatterService
+public partial class TweetFormatterService
 {
     private readonly ILogger<TweetFormatterService> _logger;
     private readonly ReleaseSummarizerService? _releaseSummarizer;
@@ -15,6 +15,9 @@ public class TweetFormatterService
     private const string Hashtag = "#GitHubCopilotCLI";
     private const string SdkHashtag = "#GitHubCopilotSDK";
     
+    // Truncation constants
+    private const int MinTruncatedLineLength = 10; // Minimum meaningful characters to show after truncation
+    
     // Emojis for different content types
     private const string ReleaseEmoji = "🚀";
     private const string FeatureEmoji = "✨";
@@ -22,6 +25,10 @@ public class TweetFormatterService
     private const string BugFixEmoji = "🐛";
     private const string SecurityEmoji = "🔒";
     private const string DocsEmoji = "📖";
+    
+    // Compiled regex pattern for "...and X more" suffix matching
+    [GeneratedRegex(@"\n?\.\.\.and \d+ more$")]
+    private static partial Regex MoreIndicatorPattern();
 
     public TweetFormatterService(ILogger<TweetFormatterService> logger, ReleaseSummarizerService? releaseSummarizer = null)
     {
@@ -173,8 +180,7 @@ public class TweetFormatterService
     private static string TruncatePreservingMoreIndicator(string summary, int overflow)
     {
         // Check if the summary ends with "...and X more" pattern
-        var morePattern = new Regex(@"\n?\.\.\.and \d+ more$");
-        var match = morePattern.Match(summary);
+        var match = MoreIndicatorPattern().Match(summary);
         
         if (match.Success)
         {
@@ -202,7 +208,7 @@ public class TweetFormatterService
             if (lines.Count == 1)
             {
                 var targetLength = summary.Length - overflow - moreSuffix.Length - 3; // -3 for "..."
-                if (targetLength > 10)
+                if (targetLength > MinTruncatedLineLength)
                 {
                     return lines[0][..targetLength] + "..." + moreSuffix;
                 }
