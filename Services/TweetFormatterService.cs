@@ -51,7 +51,6 @@ public class TweetFormatterService
     {
         // Calculate available space
         // Format: "{header}\n\n{summary}\n\n{url}\n\n{hashtag}"
-        var version = entry.Title.TrimStart('v'); // Remove 'v' prefix if present
         var header = $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
         var newlines = 6; // 2 between each section
         var hashtagLength = SdkHashtag.Length;
@@ -192,9 +191,7 @@ public class TweetFormatterService
             var text = StripHtml(match.Groups[1].Value).Trim();
             
             // Clean up the text - remove PR references and author mentions
-            text = Regex.Replace(text, @"by\s+@\S+\s+in\s+#\d+", "", RegexOptions.IgnoreCase).Trim();
-            text = Regex.Replace(text, @"in\s+#\d+$", "", RegexOptions.IgnoreCase).Trim();
-            text = Regex.Replace(text, @"#\d+$", "").Trim();
+            text = Regex.Replace(text, @"(?:by\s+@\S+\s+)?(?:in\s+)?#\d+$|by\s+@\S+\s+in\s+#\d+", "", RegexOptions.IgnoreCase).Trim();
             
             if (!string.IsNullOrWhiteSpace(text) && !text.StartsWith("Full Changelog"))
             {
