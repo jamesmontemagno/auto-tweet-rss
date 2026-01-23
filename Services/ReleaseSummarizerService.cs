@@ -124,12 +124,10 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
             
             return count;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // If parsing fails, return 0 to avoid breaking the summary
-            // Exception is not logged here as it's a non-critical operation
-            // and we gracefully fall back to 0
-            _ = ex; // Explicitly acknowledge exception for code analysis
+            // We gracefully fall back to 0 without logging since this is non-critical
             return 0;
         }
     }
