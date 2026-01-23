@@ -24,14 +24,14 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore auto-tweet-rss.sln
 
       - name: Build
-        run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
+        run: dotnet build auto-tweet-rss.sln --configuration ${{ env.CONFIGURATION }} --no-restore
 
       - name: Check for build warnings
         run: |
-          if dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore 2>&1 | grep -i "warning"; then
+          if dotnet build auto-tweet-rss.sln --configuration ${{ env.CONFIGURATION }} --no-restore 2>&1 | grep -i "warning"; then
             echo "⚠️ Build warnings detected"
             exit 0
           else
