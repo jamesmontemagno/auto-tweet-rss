@@ -76,7 +76,8 @@ public partial class TweetFormatterService
         var newlines = 6; // 2 between each section
         var hashtagLength = Hashtag.Length;
         
-        var availableForFeatures = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
+        var buffer = 6; // Small buffer to avoid edge cases
+        var availableForFeatures = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines - buffer;
         
         // Get AI-generated summary with CLI-specific prompt
         var features = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForFeatures, feedType: "cli");
@@ -155,8 +156,9 @@ public partial class TweetFormatterService
         var header = $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
         var newlines = 6; // 2 between each section
         var hashtagLength = SdkHashtag.Length;
+        var buffer = 6; // Small buffer to avoid edge cases
         
-        var availableForSummary = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
+        var availableForSummary = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines - buffer;
         
         // Get AI-generated summary with SDK-specific prompt
         var summary = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForSummary, feedType: "sdk");

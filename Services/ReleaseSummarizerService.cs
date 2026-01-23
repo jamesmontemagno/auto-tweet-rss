@@ -91,6 +91,8 @@ Your task is to:
 2. Format them in a concise way with appropriate emojis
 3. Ensure the summary fits within the specified character limit
 4. Use emojis strategically to enhance readability and appeal
+5. NEVER include user names, contributor names, or issue numbers
+6. Focus ONLY on features, fixes, and improvements - not who contributed them
 
 Emoji guidelines:
 - ✨ for new features
@@ -167,7 +169,9 @@ Total items in release: {totalItemCount}
 
 Requirements:
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
-- Include 2-3 of the most important/exciting features
+- Include a MINIMUM of 3 of the most important/exciting features (aim for 3-4)
+- NEVER include user names, contributor names, or issue/PR numbers in the summary
+- Focus ONLY on what the feature does, not who contributed it
 - Use emojis to make it visually appealing
 - Each feature should be on its own line
 - IMPORTANT: CLI feature descriptions are often long - you MUST shorten/summarize them to fit
@@ -199,7 +203,9 @@ Total items in release: {totalItemCount}
 
 Requirements:
 - Maximum length: {maxLength} characters
-- Include 2-3 of the most important/exciting features
+- Include a MINIMUM of 3 of the most important/exciting features (aim for 3-4)
+- NEVER include user names, contributor names, or issue/PR numbers in the summary
+- Focus ONLY on what the feature does, not who contributed it
 - Use emojis to make it visually appealing
 - Each feature should be on its own line
 - Be concise and impactful
