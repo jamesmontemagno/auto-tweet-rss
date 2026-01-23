@@ -71,17 +71,16 @@ public class TweetFormatterService
         
         var availableForFeatures = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
         
-        // Get AI-generated summary
-        var features = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForFeatures);
+        // Get AI-generated summary with CLI-specific prompt
+        var features = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForFeatures, feedType: "cli");
         
         // Build the tweet
         var tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
         
-        // Final safety check - truncate if needed
+        // Final safety check - try to preserve "...and X more" if truncation needed
         if (tweet.Length > MaxTweetLength)
         {
-            var overflow = tweet.Length - MaxTweetLength;
-            features = features[..^(overflow + 3)] + "...";
+            features = TruncatePreservingMoreIndicator(features, tweet.Length - MaxTweetLength);
             tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
         }
         
@@ -152,21 +151,66 @@ public class TweetFormatterService
         
         var availableForSummary = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
         
-        // Get AI-generated summary
-        var summary = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForSummary);
+        // Get AI-generated summary with SDK-specific prompt
+        var summary = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForSummary, feedType: "sdk");
         
         // Build the tweet
         var tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
         
-        // Final safety check - truncate if needed
+        // Final safety check - try to preserve "...and X more" if truncation needed
         if (tweet.Length > MaxTweetLength)
         {
-            var overflow = tweet.Length - MaxTweetLength;
-            summary = summary[..^(overflow + 3)] + "...";
+            summary = TruncatePreservingMoreIndicator(summary, tweet.Length - MaxTweetLength);
             tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
         }
         
         return tweet;
+    }
+
+    /// <summary>
+    /// Truncates the summary while trying to preserve the "...and X more" indicator
+    /// </summary>
+    private static string TruncatePreservingMoreIndicator(string summary, int overflow)
+    {
+        // Check if the summary ends with "...and X more" pattern
+        var morePattern = new Regex(@"\n?\.\.\.and \d+ more$");
+        var match = morePattern.Match(summary);
+        
+        if (match.Success)
+        {
+            // Extract the "...and X more" suffix
+            var moreSuffix = match.Value;
+            var contentWithoutSuffix = summary[..match.Index];
+            
+            // Find the last complete line in the content
+            var lines = contentWithoutSuffix.Split('\n').ToList();
+            
+            // Try to remove lines from the end until we fit
+            while (lines.Count > 1)
+            {
+                lines.RemoveAt(lines.Count - 1);
+                var trimmedContent = string.Join("\n", lines);
+                var newSummary = trimmedContent + moreSuffix;
+                
+                if (newSummary.Length <= summary.Length - overflow)
+                {
+                    return newSummary;
+                }
+            }
+            
+            // If we still don't fit, truncate the last remaining line
+            if (lines.Count == 1)
+            {
+                var targetLength = summary.Length - overflow - moreSuffix.Length - 3; // -3 for "..."
+                if (targetLength > 10)
+                {
+                    return lines[0][..targetLength] + "..." + moreSuffix;
+                }
+            }
+        }
+        
+        // Fallback to simple truncation if no "more" pattern found
+        return summary[..^(overflow + 3)] + "...";
     }
 
     public string FormatSdkTweet(ReleaseEntry entry)
