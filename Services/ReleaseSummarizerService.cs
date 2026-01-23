@@ -108,15 +108,21 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
             // Decode HTML entities
             var decoded = WebUtility.HtmlDecode(htmlContent);
             
+            // Check if we're past the "New Contributors" section - don't count those items
+            var newContributorsIndex = decoded.IndexOf("New Contributors", StringComparison.OrdinalIgnoreCase);
+            var contentToCount = newContributorsIndex >= 0 ? decoded[..newContributorsIndex] : decoded;
+            
             // Extract list items from HTML
-            var matches = ListItemPattern.Matches(decoded);
+            var matches = ListItemPattern.Matches(contentToCount);
             
             var count = 0;
             foreach (Match match in matches)
             {
                 var text = StripHtml(match.Groups[1].Value).Trim();
-                // Skip empty items and "Full Changelog" entries
-                if (!string.IsNullOrWhiteSpace(text) && !text.StartsWith("Full Changelog", StringComparison.OrdinalIgnoreCase))
+                // Skip empty items, "Full Changelog" entries, and contributor mentions
+                if (!string.IsNullOrWhiteSpace(text) && 
+                    !text.StartsWith("Full Changelog", StringComparison.OrdinalIgnoreCase) &&
+                    !text.Contains("made their first contribution", StringComparison.OrdinalIgnoreCase))
                 {
                     count++;
                 }
@@ -155,14 +161,19 @@ Requirements:
 - Use emojis to make it visually appealing
 - Each feature should be on its own line
 - Be concise and impactful
-- If you only show a subset of items (fewer than {totalItemCount}), add a line at the end: ""...and X more"" where X is the remaining count
+- IMPORTANT: Since there are {totalItemCount} total items and you will only show 3, you MUST add ""...and {totalItemCount - 3} more"" as the final line if {totalItemCount} > 3
 - DO NOT include any markdown formatting or headers
 - DO NOT include the version number (it will be added separately)
 - Output ONLY the formatted feature list, nothing else
 
-Example output format (when showing 3 out of 5 items):
+Example output format (when total items = 5, showing 3):
 ✨ New feature that does something cool
 ⚡ Performance improvement that makes things faster
 🐛 Fixed critical bug affecting users
-...and 2 more";
+...and 2 more
+
+Example output format (when total items = 3, showing 3):
+✨ New feature that does something cool
+⚡ Performance improvement that makes things faster
+🐛 Fixed critical bug affecting users";
 }
