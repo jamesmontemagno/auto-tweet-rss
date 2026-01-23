@@ -43,8 +43,9 @@ public class ReleaseSummarizerService
     /// <param name="releaseTitle">The release version/title</param>
     /// <param name="releaseContent">The full release notes content</param>
     /// <param name="maxLength">Maximum length of the summary in characters</param>
+    /// <param name="cancellationToken">Cancellation token for the async operation</param>
     /// <returns>A well-formatted summary with emojis highlighting top features</returns>
-    public async Task<string> SummarizeReleaseAsync(string releaseTitle, string releaseContent, int maxLength)
+    public async Task<string> SummarizeReleaseAsync(string releaseTitle, string releaseContent, int maxLength, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -60,8 +61,8 @@ public class ReleaseSummarizerService
             _logger.LogInformation("Requesting AI summary for release: {Title}", releaseTitle);
             
             // Use GetResponseAsync from version 10.2 API
-            var response = await _chatClient.GetResponseAsync(messages, cancellationToken: default);
-            var summary = response.Messages.Last().Text?.Trim() ?? string.Empty;
+            var response = await _chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken);
+            var summary = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
             
             _logger.LogInformation("Generated summary ({Length} chars): {Summary}", summary.Length, summary);
             

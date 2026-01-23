@@ -50,6 +50,11 @@ public class TweetFormatterService
 
     private async Task<string> FormatTweetWithAiAsync(ReleaseEntry entry)
     {
+        if (_releaseSummarizer == null)
+        {
+            throw new InvalidOperationException("ReleaseSummarizer is not configured");
+        }
+
         // Calculate available space for AI summary
         var header = $"{ReleaseEmoji} Copilot CLI v{entry.Title} released!";
         var newlines = 6; // 2 between each section
@@ -58,7 +63,7 @@ public class TweetFormatterService
         var availableForFeatures = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
         
         // Get AI-generated summary
-        var features = await _releaseSummarizer!.SummarizeReleaseAsync(entry.Title, entry.Content, availableForFeatures);
+        var features = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForFeatures);
         
         // Build the tweet
         var tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
@@ -123,6 +128,11 @@ public class TweetFormatterService
 
     private async Task<string> FormatSdkTweetWithAiAsync(ReleaseEntry entry)
     {
+        if (_releaseSummarizer == null)
+        {
+            throw new InvalidOperationException("ReleaseSummarizer is not configured");
+        }
+
         // Calculate available space for AI summary
         var header = $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
         var newlines = 6; // 2 between each section
@@ -131,7 +141,7 @@ public class TweetFormatterService
         var availableForSummary = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
         
         // Get AI-generated summary
-        var summary = await _releaseSummarizer!.SummarizeReleaseAsync(entry.Title, entry.Content, availableForSummary);
+        var summary = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForSummary);
         
         // Build the tweet
         var tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
