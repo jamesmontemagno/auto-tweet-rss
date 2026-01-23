@@ -242,7 +242,6 @@ public class TweetFormatterService
         var result = new List<string>();
         var currentLength = 0;
         var maxItems = 3; // Limit to top 3 items
-        var index = 0;
         
         foreach (var feature in features.Take(maxItems))
         {
@@ -257,32 +256,30 @@ public class TweetFormatterService
             {
                 // If there are more features to show, don't truncate - just stop here
                 // and let the "...and X more" indicator handle it
-                var remaining = features.Count - result.Count;
-                if (remaining == 0)
+                if (features.Count > result.Count)
                 {
-                    // This is the last feature, try to fit a truncated version
-                    var available = maxLength - currentLength - (result.Count > 0 ? 1 : 0) - 3; // -3 for "..."
-                    if (available > 20) // Only add if we can show at least 20 chars
-                    {
-                        result.Add(feature[..available] + "...");
-                    }
+                    // There are more features, so just break and let the indicator show
+                    break;
+                }
+                
+                // This is the last feature, try to fit a truncated version
+                var available = maxLength - currentLength - (result.Count > 0 ? 1 : 0) - 3; // -3 for "..."
+                if (available > 20) // Only add if we can show at least 20 chars
+                {
+                    result.Add(feature[..available] + "...");
                 }
                 break;
             }
-            index++;
         }
         
         // If we have more features not shown, add indicator
         if (features.Count > result.Count && currentLength + 10 < maxLength)
         {
             var remaining = features.Count - result.Count;
-            if (remaining > 0)
+            var indicator = $"...and {remaining} more";
+            if (currentLength + indicator.Length + 1 <= maxLength)
             {
-                var indicator = $"...and {remaining} more";
-                if (currentLength + indicator.Length + 1 <= maxLength)
-                {
-                    result.Add(indicator);
-                }
+                result.Add(indicator);
             }
         }
         
