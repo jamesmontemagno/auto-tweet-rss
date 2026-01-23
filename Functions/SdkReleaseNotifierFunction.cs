@@ -63,7 +63,7 @@ public class SdkReleaseNotifierFunction
             foreach (var entry in newEntries.OrderBy(e => e.Updated))
             {
                 // Format the tweet
-                var tweet = _tweetFormatterService.FormatSdkTweet(entry);
+                var tweet = await _tweetFormatterService.FormatSdkTweetAsync(entry);
                 
                 _logger.LogInformation("Formatted SDK tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
 

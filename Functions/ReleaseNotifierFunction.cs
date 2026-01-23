@@ -64,7 +64,7 @@ public class ReleaseNotifierFunction
             foreach (var entry in newEntries.OrderBy(e => e.Updated))
             {
                 // Format the tweet
-                var tweet = _tweetFormatterService.FormatTweet(entry);
+                var tweet = await _tweetFormatterService.FormatTweetAsync(entry);
                 
                 _logger.LogInformation("Formatted tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
 

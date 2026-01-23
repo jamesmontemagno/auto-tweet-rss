@@ -1,10 +1,14 @@
 using System.Text.RegularExpressions;
 using System.Web;
+using Microsoft.Extensions.Logging;
 
 namespace AutoTweetRss.Services;
 
 public class TweetFormatterService
 {
+    private readonly ILogger<TweetFormatterService> _logger;
+    private readonly ReleaseSummarizerService? _releaseSummarizer;
+
     // Twitter limits
     private const int MaxTweetLength = 280;
     private const int UrlLength = 23; // t.co shortens all URLs to 23 chars
@@ -18,6 +22,57 @@ public class TweetFormatterService
     private const string BugFixEmoji = "🐛";
     private const string SecurityEmoji = "🔒";
     private const string DocsEmoji = "📖";
+
+    public TweetFormatterService(ILogger<TweetFormatterService> logger, ReleaseSummarizerService? releaseSummarizer = null)
+    {
+        _logger = logger;
+        _releaseSummarizer = releaseSummarizer;
+    }
+
+    public async Task<string> FormatTweetAsync(ReleaseEntry entry)
+    {
+        // Try to use AI summarization if available
+        if (_releaseSummarizer != null)
+        {
+            try
+            {
+                return await FormatTweetWithAiAsync(entry);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate AI summary, falling back to manual extraction");
+            }
+        }
+
+        // Fall back to manual extraction
+        return FormatTweet(entry);
+    }
+
+    private async Task<string> FormatTweetWithAiAsync(ReleaseEntry entry)
+    {
+        // Calculate available space for AI summary
+        var header = $"{ReleaseEmoji} Copilot CLI v{entry.Title} released!";
+        var newlines = 6; // 2 between each section
+        var hashtagLength = Hashtag.Length;
+        
+        var availableForFeatures = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
+        
+        // Get AI-generated summary
+        var features = await _releaseSummarizer!.SummarizeReleaseAsync(entry.Title, entry.Content, availableForFeatures);
+        
+        // Build the tweet
+        var tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
+        
+        // Final safety check - truncate if needed
+        if (tweet.Length > MaxTweetLength)
+        {
+            var overflow = tweet.Length - MaxTweetLength;
+            features = features[..^(overflow + 3)] + "...";
+            tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
+        }
+        
+        return tweet;
+    }
 
     public string FormatTweet(ReleaseEntry entry)
     {
@@ -42,6 +97,51 @@ public class TweetFormatterService
             var overflow = tweet.Length - MaxTweetLength;
             features = features[..^(overflow + 3)] + "...";
             tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
+        }
+        
+        return tweet;
+    }
+
+    public async Task<string> FormatSdkTweetAsync(ReleaseEntry entry)
+    {
+        // Try to use AI summarization if available
+        if (_releaseSummarizer != null)
+        {
+            try
+            {
+                return await FormatSdkTweetWithAiAsync(entry);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate AI summary for SDK release, falling back to manual extraction");
+            }
+        }
+
+        // Fall back to manual extraction
+        return FormatSdkTweet(entry);
+    }
+
+    private async Task<string> FormatSdkTweetWithAiAsync(ReleaseEntry entry)
+    {
+        // Calculate available space for AI summary
+        var header = $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
+        var newlines = 6; // 2 between each section
+        var hashtagLength = SdkHashtag.Length;
+        
+        var availableForSummary = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
+        
+        // Get AI-generated summary
+        var summary = await _releaseSummarizer!.SummarizeReleaseAsync(entry.Title, entry.Content, availableForSummary);
+        
+        // Build the tweet
+        var tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
+        
+        // Final safety check - truncate if needed
+        if (tweet.Length > MaxTweetLength)
+        {
+            var overflow = tweet.Length - MaxTweetLength;
+            summary = summary[..^(overflow + 3)] + "...";
+            tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
         }
         
         return tweet;
