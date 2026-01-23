@@ -50,15 +50,16 @@ public class ReleaseSummarizerService
     /// <param name="releaseTitle">The release version/title</param>
     /// <param name="releaseContent">The full release notes content</param>
     /// <param name="maxLength">Maximum length of the summary in characters</param>
+    /// <param name="feedType">Type of feed - "cli" or "sdk" - defaults to "sdk" for backwards compatibility</param>
     /// <param name="cancellationToken">Cancellation token for the async operation</param>
     /// <returns>A well-formatted summary with emojis highlighting top features</returns>
-    public async Task<string> SummarizeReleaseAsync(string releaseTitle, string releaseContent, int maxLength, CancellationToken cancellationToken = default)
+    public async Task<string> SummarizeReleaseAsync(string releaseTitle, string releaseContent, int maxLength, string feedType = "sdk", CancellationToken cancellationToken = default)
     {
         try
         {
-            var totalItemCount = CountItemsInRelease(releaseContent);
+            var totalItemCount = CountItemsInRelease(releaseContent, feedType);
             var systemPrompt = GetSystemPrompt();
-            var userPrompt = BuildUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount);
+            var userPrompt = BuildUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, feedType);
             
             var messages = new List<Microsoft.Extensions.AI.ChatMessage>
             {
@@ -66,19 +67,19 @@ public class ReleaseSummarizerService
                 new(ChatRole.User, userPrompt)
             };
 
-            _logger.LogInformation("Requesting AI summary for release: {Title} ({TotalItems} items)", releaseTitle, totalItemCount);
+            _logger.LogInformation("Requesting AI summary for {FeedType} release: {Title} ({TotalItems} items)", feedType, releaseTitle, totalItemCount);
             
             // Use GetResponseAsync from version 10.2 API
             var response = await _chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken);
             var summary = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
             
-            _logger.LogInformation("Generated summary ({Length} chars): {Summary}", summary.Length, summary);
+            _logger.LogInformation("Generated {FeedType} summary ({Length} chars): {Summary}", feedType, summary.Length, summary);
             
             return summary;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating AI summary for release: {Title}", releaseTitle);
+            _logger.LogError(ex, "Error generating AI summary for {FeedType} release: {Title}", feedType, releaseTitle);
             throw;
         }
     }
@@ -101,7 +102,7 @@ Emoji guidelines:
 
 Keep the tone exciting and developer-friendly. Focus on what matters most to users.";
 
-    private static int CountItemsInRelease(string htmlContent)
+    private static int CountItemsInRelease(string htmlContent, string feedType = "sdk")
     {
         try
         {
@@ -147,7 +148,48 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         return normalized.Trim();
     }
 
-    private static string BuildUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount) =>
+    private static string BuildUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, string feedType)
+    {
+        if (feedType == "cli")
+        {
+            return BuildCliUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount);
+        }
+        return BuildSdkUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount);
+    }
+
+    private static string BuildCliUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount) =>
+        $@"Summarize the following Copilot CLI release notes for {releaseTitle}.
+
+Release Content:
+{releaseContent}
+
+Total items in release: {totalItemCount}
+
+Requirements:
+- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
+- Include 2-3 of the most important/exciting features
+- Use emojis to make it visually appealing
+- Each feature should be on its own line
+- IMPORTANT: CLI feature descriptions are often long - you MUST shorten/summarize them to fit
+- Keep each feature line under 60 characters when possible
+- CRITICAL: If there are more than 3 items total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = {totalItemCount - 3}
+- DO NOT include any markdown formatting or headers
+- DO NOT include the version number (it will be added separately)
+- DO NOT truncate feature descriptions mid-sentence with ""..."" - either shorten them properly or omit them
+- Output ONLY the formatted feature list, nothing else
+
+Example output format (when total items = 6, showing 3):
+✨ Show compaction status in timeline
+✨ Add Esc-Esc to undo file changes
+✨ Support for GHE Cloud remote agents
+...and 3 more
+
+Example output format (when total items = 3, showing 3):
+✨ Show compaction status in timeline
+✨ Add Esc-Esc to undo file changes
+✨ Support for GHE Cloud remote agents";
+
+    private static string BuildSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount) =>
         $@"Summarize the following release notes for {releaseTitle}.
 
 Release Content:
