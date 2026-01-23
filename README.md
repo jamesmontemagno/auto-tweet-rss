@@ -7,6 +7,7 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 - Monitors both GitHub Copilot CLI and Copilot SDK Atom feeds
 - Polls feeds every 15 minutes
 - Filters out pre-release versions and submodule releases
+- **AI-powered summaries**: Uses Microsoft.Extensions.AI with Azure OpenAI to generate concise, emoji-enhanced summaries of release notes
 - Formats tweets with emoji-enhanced bullet points for features
 - Posts to Twitter/X using OAuth 1.0a authentication
 - Tracks state in Azure Blob Storage to prevent duplicate tweets (separate state for CLI and SDK)
@@ -70,7 +71,11 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
     "STATE_CONTAINER_NAME": "release-state",
     
-    "RSS_FEED_URL": "https://github.com/github/copilot-cli/releases.atom"
+    "RSS_FEED_URL": "https://github.com/github/copilot-cli/releases.atom",
+    
+    "AI_ENDPOINT": "<your-azure-openai-endpoint>",
+    "AI_API_KEY": "<your-azure-openai-api-key>",
+    "AI_MODEL": "gpt-4o-nano"
   }
 }
 ```
@@ -88,6 +93,9 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AZURE_STORAGE_CONNECTION_STRING` | Connection string for state tracking blob storage | Yes |
 | `STATE_CONTAINER_NAME` | Blob container name for state file | No (default: `release-state`) |
 | `RSS_FEED_URL` | Atom feed URL to monitor | No (default: Copilot CLI releases) |
+| `AI_ENDPOINT` | Azure OpenAI endpoint URL (e.g., `https://your-resource.openai.azure.com/`) | No (if not set, falls back to manual extraction) |
+| `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
+| `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-4o-nano`) |
 
 ### Getting Twitter OAuth 1.0a Credentials
 
@@ -100,6 +108,21 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
    - Access Token → `TWITTER_ACCESS_TOKEN`
    - Access Token Secret → `TWITTER_ACCESS_TOKEN_SECRET`
 5. Ensure your app has **Read and Write** permissions
+
+### Setting up Azure OpenAI (Optional but Recommended)
+
+To enable AI-powered summaries:
+
+1. Go to [Azure Portal](https://portal.azure.com/)
+2. Create an **Azure OpenAI** resource
+3. Deploy a model (recommended: `gpt-4o-nano` for cost-effectiveness, or `gpt-4o`, `gpt-4o-mini`)
+4. Get your endpoint and API key from the resource's "Keys and Endpoint" section
+5. Configure the environment variables:
+   - `AI_ENDPOINT`: Your Azure OpenAI endpoint URL
+   - `AI_API_KEY`: Your Azure OpenAI API key
+   - `AI_MODEL`: Your deployment name (e.g., `gpt-4o-nano`)
+
+**Note**: If AI configuration is not provided, the system will fall back to manual HTML parsing and extraction of release notes.
 
 ## Local Development
 
@@ -135,6 +158,7 @@ auto-tweet-rss/
     ├── OAuth1Helper.cs            # HMAC-SHA1 signature for Twitter
     ├── TwitterApiClient.cs        # Direct HTTP calls to Twitter API v2
     ├── TweetFormatterService.cs   # Formats tweets for both CLI and SDK
+    ├── ReleaseSummarizerService.cs # AI-powered release note summarization
     └── StateTrackingService.cs    # Blob storage for last processed IDs
 ```
 
@@ -156,9 +180,10 @@ auto-tweet-rss/
 2. **Fetch Feed**: Downloads and parses the CLI Atom feed from https://github.com/github/copilot-cli/releases.atom
 3. **Filter**: Removes entries with pre-release patterns (`-0`, `-1`, etc.) or "Pre-release" in content
 4. **Check State**: Compares against last processed entry ID stored in blob storage (`last-processed-id.txt`)
-5. **Format**: Creates tweet with emojis, extracted features, URL, and hashtag `#GitHubCopilotCLI`
-6. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
-7. **Update State**: Saves the processed entry ID to prevent duplicates
+5. **AI Summary** (if configured): Sends release content to Azure OpenAI for intelligent summarization with emojis
+6. **Format**: Creates tweet with AI-generated summary or fallback to manual extraction, URL, and hashtag `#GitHubCopilotCLI`
+7. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
+8. **Update State**: Saves the processed entry ID to prevent duplicates
 
 ### SdkReleaseNotifier Function (Copilot SDK)
 
@@ -166,9 +191,10 @@ auto-tweet-rss/
 2. **Fetch Feed**: Downloads and parses the SDK Atom feed from https://github.com/github/copilot-sdk/releases.atom
 3. **Filter**: Removes entries with preview releases (`-preview.X`) and Go submodule releases (`go/vX.X.X`)
 4. **Check State**: Compares against last processed entry ID stored in blob storage (`sdk-last-processed-id.txt`)
-5. **Format**: Creates tweet with summarized changes from "What's Changed" section and hashtag `#GitHubCopilotSDK`
-6. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
-7. **Update State**: Saves the processed entry ID to prevent duplicates
+5. **AI Summary** (if configured): Sends release content to Azure OpenAI for intelligent summarization with emojis
+6. **Format**: Creates tweet with AI-generated summary or fallback to manual extraction, and hashtag `#GitHubCopilotSDK`
+7. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
+8. **Update State**: Saves the processed entry ID to prevent duplicates
 
 ## License
 
