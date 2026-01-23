@@ -16,6 +16,7 @@
     
     "AI_ENDPOINT": "",
     "AI_API_KEY": "",
-    "AI_MODEL": "gpt-4o-nano"
+    "AI_MODEL": "gpt-5-nano",
+    "ENABLE_TIMERS": "false"
   }
 }

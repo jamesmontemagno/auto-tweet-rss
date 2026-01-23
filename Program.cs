@@ -14,7 +14,7 @@ var host = new HostBuilder()
         // Register AI summarizer service if configured
         var aiEndpoint = Environment.GetEnvironmentVariable("AI_ENDPOINT");
         var aiApiKey = Environment.GetEnvironmentVariable("AI_API_KEY");
-        var aiModel = Environment.GetEnvironmentVariable("AI_MODEL") ?? "gpt-4o-nano";
+        var aiModel = Environment.GetEnvironmentVariable("AI_MODEL") ?? "gpt-5-nano";
         
         if (!string.IsNullOrEmpty(aiEndpoint) && !string.IsNullOrEmpty(aiApiKey))
         {

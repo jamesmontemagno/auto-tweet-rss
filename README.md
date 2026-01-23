@@ -93,9 +93,10 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AZURE_STORAGE_CONNECTION_STRING` | Connection string for state tracking blob storage | Yes |
 | `STATE_CONTAINER_NAME` | Blob container name for state file | No (default: `release-state`) |
 | `RSS_FEED_URL` | Atom feed URL to monitor | No (default: Copilot CLI releases) |
+| `ENABLE_TIMERS` | Enable automatic timer-based checks | No (default: `false`) |
 | `AI_ENDPOINT` | Azure OpenAI endpoint URL (e.g., `https://your-resource.openai.azure.com/`) | No (if not set, falls back to manual extraction) |
 | `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
-| `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-4o-nano`) |
+| `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-5-nano`) |
 
 ### Getting Twitter OAuth 1.0a Credentials
 
@@ -140,7 +141,24 @@ To enable AI-powered summaries:
    
    Or press F5 in VS Code with the Azure Functions extension.
 
-4. The timer trigger runs every 15 minutes. To test immediately, you can trigger it manually via the Azure Functions Core Tools admin endpoint.
+4. **Timer configuration**: 
+   - By default, timers are **disabled** (`ENABLE_TIMERS=false`) to prevent automatic tweets during development
+   - To enable timers, set `ENABLE_TIMERS=true` in your `local.settings.json`
+   - When enabled, timers run every 15 minutes
+
+5. **Testing the AI summary** without tweeting:
+   
+   Use the test endpoint to preview AI-generated summaries:
+   
+   ```bash
+   # Test CLI release summary
+   curl http://localhost:7071/api/test-summary/cli
+   
+   # Test SDK release summary
+   curl http://localhost:7071/api/test-summary/sdk
+   ```
+   
+   This fetches the latest release and generates the tweet format without posting to Twitter.
 
 ## Project Structure
 
@@ -152,7 +170,8 @@ auto-tweet-rss/
 ├── local.settings.json            # Local environment variables (git-ignored)
 ├── Functions/
 │   ├── ReleaseNotifierFunction.cs # Timer trigger for Copilot CLI (every 15 min)
-│   └── SdkReleaseNotifierFunction.cs # Timer trigger for Copilot SDK (every 15 min)
+│   ├── SdkReleaseNotifierFunction.cs # Timer trigger for Copilot SDK (every 15 min)
+│   └── TestSummaryFunction.cs     # HTTP endpoint for testing AI summaries
 └── Services/
     ├── RssFeedService.cs          # Fetches and filters RSS feeds
     ├── OAuth1Helper.cs            # HMAC-SHA1 signature for Twitter

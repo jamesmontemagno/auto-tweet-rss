@@ -29,6 +29,14 @@ public class ReleaseNotifierFunction
     [Function("ReleaseNotifier")]
     public async Task Run([TimerTrigger("0 */15 * * * *")] TimerInfo timerInfo)
     {
+        // Check if timers are enabled
+        var timersEnabled = Environment.GetEnvironmentVariable("ENABLE_TIMERS");
+        if (string.IsNullOrEmpty(timersEnabled) || !bool.Parse(timersEnabled))
+        {
+            _logger.LogInformation("ReleaseNotifier timer is disabled via ENABLE_TIMERS configuration");
+            return;
+        }
+
         _logger.LogInformation("ReleaseNotifier function started at: {Time}", DateTime.UtcNow);
 
         try

@@ -29,6 +29,14 @@ public class SdkReleaseNotifierFunction
     [Function("SdkReleaseNotifier")]
     public async Task Run([TimerTrigger("0 */15 * * * *")] TimerInfo timerInfo)
     {
+        // Check if timers are enabled
+        var timersEnabled = Environment.GetEnvironmentVariable("ENABLE_TIMERS");
+        if (string.IsNullOrEmpty(timersEnabled) || !bool.Parse(timersEnabled))
+        {
+            _logger.LogInformation("SdkReleaseNotifier timer is disabled via ENABLE_TIMERS configuration");
+            return;
+        }
+
         _logger.LogInformation("SdkReleaseNotifier function started at: {Time}", DateTime.UtcNow);
 
         try
