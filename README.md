@@ -1,17 +1,20 @@
 # Auto Tweet RSS
 
-An Azure Function that monitors the GitHub Copilot CLI releases RSS feed and automatically tweets about new stable releases.
+An Azure Function that monitors GitHub Copilot releases RSS feeds and automatically tweets about new stable releases.
 
 ## Features
 
-- Polls the GitHub Copilot CLI Atom feed every 15 minutes
-- Filters out pre-release versions (those with `-N` suffix or containing "Pre-release")
+- Monitors both GitHub Copilot CLI and Copilot SDK Atom feeds
+- Polls feeds every 15 minutes
+- Filters out pre-release versions and submodule releases
 - Formats tweets with emoji-enhanced bullet points for features
 - Posts to Twitter/X using OAuth 1.0a authentication
-- Tracks state in Azure Blob Storage to prevent duplicate tweets
+- Tracks state in Azure Blob Storage to prevent duplicate tweets (separate state for CLI and SDK)
 - Respects Twitter's 280 character limit with smart truncation
 
-## Tweet Format
+## Tweet Formats
+
+### Copilot CLI
 
 ```
 🚀 Copilot CLI v0.0.388 released!
@@ -23,6 +26,20 @@ An Azure Function that monitors the GitHub Copilot CLI releases RSS feed and aut
 https://github.com/github/copilot-cli/releases/tag/v0.0.388
 
 #GitHubCopilotCLI
+```
+
+### Copilot SDK
+
+```
+🚀 Copilot SDK v0.1.16 released!
+
+✨ Adding FAQ section to the README
+⚡ Make the .NET library NativeAOT compatible
+🐛 Fix code formatting
+
+https://github.com/github/copilot-sdk/releases/tag/v0.1.16
+
+#GitHubCopilotSDK
 ```
 
 ## Prerequisites
@@ -111,13 +128,14 @@ auto-tweet-rss/
 ├── host.json                      # Azure Functions host configuration
 ├── local.settings.json            # Local environment variables (git-ignored)
 ├── Functions/
-│   └── ReleaseNotifierFunction.cs # Timer trigger (every 15 min)
+│   ├── ReleaseNotifierFunction.cs # Timer trigger for Copilot CLI (every 15 min)
+│   └── SdkReleaseNotifierFunction.cs # Timer trigger for Copilot SDK (every 15 min)
 └── Services/
-    ├── RssFeedService.cs          # Fetches and filters RSS feed
+    ├── RssFeedService.cs          # Fetches and filters RSS feeds
     ├── OAuth1Helper.cs            # HMAC-SHA1 signature for Twitter
     ├── TwitterApiClient.cs        # Direct HTTP calls to Twitter API v2
-    ├── TweetFormatterService.cs   # Formats tweets with emojis
-    └── StateTrackingService.cs    # Blob storage for last processed ID
+    ├── TweetFormatterService.cs   # Formats tweets for both CLI and SDK
+    └── StateTrackingService.cs    # Blob storage for last processed IDs
 ```
 
 ## Deployment to Azure
@@ -132,11 +150,23 @@ auto-tweet-rss/
 
 ## How It Works
 
+### ReleaseNotifier Function (Copilot CLI)
+
 1. **Timer Trigger**: Runs every 15 minutes (`0 */15 * * * *`)
-2. **Fetch Feed**: Downloads and parses the Atom feed
+2. **Fetch Feed**: Downloads and parses the CLI Atom feed from https://github.com/github/copilot-cli/releases.atom
 3. **Filter**: Removes entries with pre-release patterns (`-0`, `-1`, etc.) or "Pre-release" in content
-4. **Check State**: Compares against last processed entry ID stored in blob storage
-5. **Format**: Creates tweet with emojis, extracted features, URL, and hashtag
+4. **Check State**: Compares against last processed entry ID stored in blob storage (`last-processed-id.txt`)
+5. **Format**: Creates tweet with emojis, extracted features, URL, and hashtag `#GitHubCopilotCLI`
+6. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
+7. **Update State**: Saves the processed entry ID to prevent duplicates
+
+### SdkReleaseNotifier Function (Copilot SDK)
+
+1. **Timer Trigger**: Runs every 15 minutes (`0 */15 * * * *`)
+2. **Fetch Feed**: Downloads and parses the SDK Atom feed from https://github.com/github/copilot-sdk/releases.atom
+3. **Filter**: Removes entries with preview releases (`-preview.X`) and Go submodule releases (`go/vX.X.X`)
+4. **Check State**: Compares against last processed entry ID stored in blob storage (`sdk-last-processed-id.txt`)
+5. **Format**: Creates tweet with summarized changes from "What's Changed" section and hashtag `#GitHubCopilotSDK`
 6. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
 7. **Update State**: Saves the processed entry ID to prevent duplicates
 

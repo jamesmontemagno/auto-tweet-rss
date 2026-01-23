@@ -22,49 +22,53 @@ public class StateTrackingService
         _containerClient = blobServiceClient.GetBlobContainerClient(containerName);
     }
 
-    public async Task<string?> GetLastProcessedIdAsync()
+    public async Task<string?> GetLastProcessedIdAsync(string? stateFileName = null)
     {
+        var fileName = stateFileName ?? StateFileName;
+        
         try
         {
             await _containerClient.CreateIfNotExistsAsync();
             
-            var blobClient = _containerClient.GetBlobClient(StateFileName);
+            var blobClient = _containerClient.GetBlobClient(fileName);
             
             if (!await blobClient.ExistsAsync())
             {
-                _logger.LogInformation("No previous state found");
+                _logger.LogInformation("No previous state found for {FileName}", fileName);
                 return null;
             }
             
             var response = await blobClient.DownloadContentAsync();
             var lastId = response.Value.Content.ToString();
             
-            _logger.LogInformation("Last processed ID: {LastId}", lastId);
+            _logger.LogInformation("Last processed ID: {LastId} from {FileName}", lastId, fileName);
             return lastId;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reading last processed ID");
+            _logger.LogError(ex, "Error reading last processed ID from {FileName}", fileName);
             return null;
         }
     }
 
-    public async Task SetLastProcessedIdAsync(string id)
+    public async Task SetLastProcessedIdAsync(string id, string? stateFileName = null)
     {
+        var fileName = stateFileName ?? StateFileName;
+        
         try
         {
             await _containerClient.CreateIfNotExistsAsync();
             
-            var blobClient = _containerClient.GetBlobClient(StateFileName);
+            var blobClient = _containerClient.GetBlobClient(fileName);
             
             using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(id));
             await blobClient.UploadAsync(stream, overwrite: true);
             
-            _logger.LogInformation("Updated last processed ID to: {Id}", id);
+            _logger.LogInformation("Updated last processed ID to: {Id} in {FileName}", id, fileName);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error saving last processed ID");
+            _logger.LogError(ex, "Error saving last processed ID to {FileName}", fileName);
             throw;
         }
     }
