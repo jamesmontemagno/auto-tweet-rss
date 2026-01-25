@@ -24,11 +24,30 @@ var host = new HostBuilder()
                 return new ReleaseSummarizerService(logger, aiEndpoint, aiApiKey, aiModel);
             });
         }
+
+        var enableDiscord = Environment.GetEnvironmentVariable("ENABLE_DISCORD_POSTS") ?? "false";
+        if (!string.IsNullOrWhiteSpace(enableDiscord))
+        {
+            if (!bool.TryParse(enableDiscord, out var enableDiscordPosts))
+            {
+                throw new InvalidOperationException("ENABLE_DISCORD_POSTS must be 'true' or 'false'");
+            }
+
+            if (enableDiscordPosts)
+            {
+                var discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL");
+                if (string.IsNullOrWhiteSpace(discordWebhookUrl))
+                {
+                    throw new InvalidOperationException("DISCORD_WEBHOOK_URL not configured");
+                }
+            }
+        }
         
         // Register services
         services.AddSingleton<RssFeedService>();
         services.AddSingleton<OAuth1Helper>();
         services.AddSingleton<TwitterApiClient>();
+        services.AddSingleton<DiscordWebhookClient>();
         services.AddSingleton<TweetFormatterService>();
         services.AddSingleton<StateTrackingService>();
     })

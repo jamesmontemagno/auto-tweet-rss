@@ -17,6 +17,8 @@
     "AI_ENDPOINT": "",
     "AI_API_KEY": "",
     "AI_MODEL": "gpt-5-nano",
-    "ENABLE_AI_SUMMARIES": "false"
+    "ENABLE_AI_SUMMARIES": "false",
+    "ENABLE_DISCORD_POSTS": "false",
+    "DISCORD_WEBHOOK_URL": ""
   }
 }
