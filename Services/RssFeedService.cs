@@ -93,8 +93,10 @@ public class RssFeedService
             return true;
         }
 
-        // Check if content contains "Pre-release"
-        if (content.Contains("Pre-release", StringComparison.OrdinalIgnoreCase))
+        // Check if content starts with "Pre-release" (not just mentions it as a feature)
+        // Actual pre-releases have content like "<p>Pre-release 0.0.396-0</p>"
+        if (content.TrimStart().StartsWith("<p>Pre-release", StringComparison.OrdinalIgnoreCase) ||
+            content.TrimStart().StartsWith("Pre-release ", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
