@@ -152,40 +152,54 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
 
     private static string BuildUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, string feedType)
     {
+        // Calculate how many items we can likely fit
+        // Estimate: emoji (2) + space (1) + average description (35-40 chars) + newline (1) = ~40 chars per item
+        // Reserve space for "...and X more" suffix (~15 chars)
+        var estimatedCharsPerItem = feedType == "cli" ? 50 : 40; // CLI items tend to be longer
+        var reserveForSuffix = totalItemCount > 5 ? 15 : 0;
+        var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
+        // Cap at reasonable maximum to avoid token limits
+        maxItems = Math.Min(maxItems, 10);
+        
         if (feedType == "cli")
         {
-            return BuildCliUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount);
+            return BuildCliUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
-        return BuildSdkUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount);
+        return BuildSdkUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
     }
 
-    private static string BuildCliUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount) =>
+    private static string BuildCliUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Summarize the following Copilot CLI release notes for {releaseTitle}.
 
 Release Content:
 {releaseContent}
 
 Total items in release: {totalItemCount}
+Target items to show: {targetItems}
 
 Requirements:
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
-- Include a MINIMUM of 3 of the most important/exciting features (aim for 3-4)
+- Include UP TO {targetItems} of the most important/exciting features that fit within the character limit
+- Prioritize: Show as many HIGH-RELEVANCE items as possible while staying under {maxLength} characters
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - Focus ONLY on what the feature does, not who contributed it
 - Use emojis to make it visually appealing
 - Each feature should be on its own line
-- IMPORTANT: CLI feature descriptions are often long - you MUST shorten/summarize them to fit
-- Keep each feature line under 60 characters when possible
-- CRITICAL: If there are more than 3 items total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = {totalItemCount - 3}
+- IMPORTANT: CLI feature descriptions are often long - you MUST shorten/summarize them to fit more items
+- Keep each feature line concise (aim for 40-50 characters) to maximize count
+- CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
 - DO NOT include any markdown formatting or headers
 - DO NOT include the version number (it will be added separately)
 - DO NOT truncate feature descriptions mid-sentence with ""..."" - either shorten them properly or omit them
 - Output ONLY the formatted feature list, nothing else
+- MAXIMIZE the number of items shown - more items is better than longer descriptions!
 
-Example output format (when total items = 6, showing 3):
+Example output format (when total items = 8, showing 5):
 ✨ Show compaction status in timeline
 ✨ Add Esc-Esc to undo file changes
 ✨ Support for GHE Cloud remote agents
+⚡ Improved workspace indexing speed
+🐛 Fixed file watcher memory leak
 ...and 3 more
 
 Example output format (when total items = 3, showing 3):
@@ -193,35 +207,42 @@ Example output format (when total items = 3, showing 3):
 ✨ Add Esc-Esc to undo file changes
 ✨ Support for GHE Cloud remote agents";
 
-    private static string BuildSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount) =>
+    private static string BuildSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Summarize the following release notes for {releaseTitle}.
 
 Release Content:
 {releaseContent}
 
 Total items in release: {totalItemCount}
+Target items to show: {targetItems}
 
 Requirements:
-- Maximum length: {maxLength} characters
-- Include a MINIMUM of 3 of the most important/exciting features (aim for 3-4)
+- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
+- Include UP TO {targetItems} of the most important/exciting features that fit within the character limit
+- Prioritize: Show as many HIGH-RELEVANCE items as possible while staying under {maxLength} characters
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - Focus ONLY on what the feature does, not who contributed it
 - Use emojis to make it visually appealing
 - Each feature should be on its own line
-- Be concise and impactful
-- IMPORTANT: Since there are {totalItemCount} total items and you will only show 3, you MUST add ""...and {totalItemCount - 3} more"" as the final line if {totalItemCount} > 3
+- Keep descriptions concise (aim for 35-40 characters per line) to fit more items
+- CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
 - DO NOT include any markdown formatting or headers
 - DO NOT include the version number (it will be added separately)
 - Output ONLY the formatted feature list, nothing else
+- MAXIMIZE the number of items shown - more items is better than longer descriptions!
 
-Example output format (when total items = 5, showing 3):
-✨ New feature that does something cool
-⚡ Performance improvement that makes things faster
-🐛 Fixed critical bug affecting users
+Example output format (when total items = 8, showing 6):
+✨ New AI code completion engine
+⚡ 40% faster suggestion generation
+🐛 Fixed context window overflow
+✨ Support for Rust language
+🔒 Updated security dependencies
+📖 Added API migration guide
 ...and 2 more
 
-Example output format (when total items = 3, showing 3):
-✨ New feature that does something cool
-⚡ Performance improvement that makes things faster
-🐛 Fixed critical bug affecting users";
+Example output format (when total items = 4, showing 4):
+✨ New AI code completion engine
+⚡ 40% faster suggestion generation
+🐛 Fixed context window overflow
+✨ Support for Rust language";
 }
