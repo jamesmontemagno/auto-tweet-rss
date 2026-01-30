@@ -16,6 +16,13 @@ public partial class VSCodeReleaseNotesService
     // Base URL for VS Code updates - version changes monthly
     private const string BaseUpdateUrl = "https://code.visualstudio.com/updates/";
     
+    // Constants for text length thresholds
+    private const int MinListItemLength = 5;
+    private const int MinFeatureTextLength = 20;
+    private const int MaxTitleLength = 80;
+    private const int MaxSentenceEndIndex = 100;
+    private const int TruncatedTitleLength = 77;
+    
     // Compiled regex for extracting date from headings like "January 26, 2026" or "January 26"
     [GeneratedRegex(@"(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:,\s*(\d{4}))?", RegexOptions.IgnoreCase)]
     private static partial Regex DatePattern();
@@ -31,7 +38,7 @@ public partial class VSCodeReleaseNotesService
     }
 
     /// <summary>
-    /// Gets the current VS Code Insiders release notes for the current day
+    /// Gets VS Code Insiders release notes for today's date
     /// </summary>
     /// <returns>Release notes if updates exist for today, null otherwise</returns>
     public async Task<VSCodeReleaseNotes?> GetTodayReleaseNotesAsync()
@@ -258,7 +265,7 @@ public partial class VSCodeReleaseNotesService
             if (sibling.Name.Equals("p", StringComparison.OrdinalIgnoreCase))
             {
                 var text = HtmlEntity.DeEntitize(sibling.InnerText).Trim();
-                if (!string.IsNullOrWhiteSpace(text) && text.Length > 20)
+                if (!string.IsNullOrWhiteSpace(text) && text.Length > MinFeatureTextLength)
                 {
                     features.Add(new VSCodeFeature
                     {
@@ -279,14 +286,18 @@ public partial class VSCodeReleaseNotesService
     {
         var text = HtmlEntity.DeEntitize(li.InnerText).Trim();
         
-        if (string.IsNullOrWhiteSpace(text) || text.Length < 5)
+        if (string.IsNullOrWhiteSpace(text) || text.Length < MinListItemLength)
         {
             return null;
         }
         
-        // Extract link if present
+        // Extract link if present and convert relative URLs to absolute
         var linkNode = li.SelectSingleNode(".//a");
         var link = linkNode?.GetAttributeValue("href", null);
+        if (link != null && link.StartsWith('/'))
+        {
+            link = "https://code.visualstudio.com" + link;
+        }
         
         // Try to extract title from bold/strong text or use the first part
         var strongNode = li.SelectSingleNode(".//strong | .//b");
@@ -307,12 +318,12 @@ public partial class VSCodeReleaseNotesService
     {
         // Get first sentence or first N characters
         var firstPeriod = text.IndexOf('.');
-        if (firstPeriod > 0 && firstPeriod < 100)
+        if (firstPeriod > 0 && firstPeriod < MaxSentenceEndIndex)
         {
             return text[..firstPeriod];
         }
         
-        return text.Length > 80 ? text[..77] + "..." : text;
+        return text.Length > MaxTitleLength ? text[..TruncatedTitleLength] + "..." : text;
     }
 
     private static string ExtractCategory(string headingText)

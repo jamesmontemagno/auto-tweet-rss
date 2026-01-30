@@ -126,7 +126,7 @@ public class VSCodeInsidersFunction
         {
             _logger.LogError(ex, "Error in VSCodeInsiders function");
             response.StatusCode = HttpStatusCode.InternalServerError;
-            await response.WriteStringAsync($"Error: {ex.Message}");
+            await response.WriteStringAsync("An error occurred while processing your request.");
             return response;
         }
     }
