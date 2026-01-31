@@ -54,44 +54,48 @@ public partial class VSCodeReleaseNotesService
     /// <returns>Release notes if updates exist for the date, null otherwise</returns>
     public async Task<VSCodeReleaseNotes?> GetReleaseNotesForDateAsync(DateTime targetDate)
     {
-        try
+        foreach (var versionUrl in GetCandidateVersionUrls(targetDate))
         {
-            var versionUrl = GetVersionUrl(targetDate);
-            _logger.LogInformation("Fetching VS Code Insiders release notes from {Url} for date {Date}", 
-                versionUrl, targetDate.ToString("yyyy-MM-dd"));
-
-            var html = await _httpClient.GetStringAsync(versionUrl);
-            var doc = new HtmlDocument();
-            doc.LoadHtml(html);
-
-            // Find all date-based sections in the page
-            var features = ParseFeaturesForDate(doc, targetDate);
-
-            if (features.Count == 0)
+            try
             {
-                _logger.LogInformation("No release notes found for date {Date}", targetDate.ToString("yyyy-MM-dd"));
-                return null;
+                _logger.LogInformation("Fetching VS Code Insiders release notes from {Url} for date {Date}",
+                    versionUrl, targetDate.ToString("yyyy-MM-dd"));
+
+                var html = await _httpClient.GetStringAsync(versionUrl);
+                var doc = new HtmlDocument();
+                doc.LoadHtml(html);
+
+                // Find all date-based sections in the page
+                var features = ParseFeaturesForDate(doc, targetDate);
+
+                if (features.Count == 0)
+                {
+                    _logger.LogInformation("No release notes found for date {Date} at {Url}",
+                        targetDate.ToString("yyyy-MM-dd"), versionUrl);
+                    continue;
+                }
+
+                _logger.LogInformation("Found {Count} features for date {Date} at {Url}",
+                    features.Count, targetDate.ToString("yyyy-MM-dd"), versionUrl);
+
+                return new VSCodeReleaseNotes
+                {
+                    Date = targetDate,
+                    Features = features,
+                    VersionUrl = versionUrl
+                };
             }
-
-            _logger.LogInformation("Found {Count} features for date {Date}", features.Count, targetDate.ToString("yyyy-MM-dd"));
-
-            return new VSCodeReleaseNotes
+            catch (HttpRequestException ex)
             {
-                Date = targetDate,
-                Features = features,
-                VersionUrl = versionUrl
-            };
+                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", versionUrl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", versionUrl);
+            }
         }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "Failed to fetch VS Code release notes - page may not exist yet");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching VS Code Insiders release notes");
-            return null;
-        }
+
+        return null;
     }
 
     /// <summary>
@@ -144,24 +148,57 @@ public partial class VSCodeReleaseNotesService
     }
 
     /// <summary>
-    /// Gets the URL for the current version based on the target date
-    /// VS Code uses version numbers like v1_109 for January 2026
+    /// Gets candidate URLs for the release notes based on the target date.
+    /// VS Code releases on the first Thursday of the month, and the version page
+    /// changes then; also try the next version in case notes appear early.
     /// </summary>
-    private static string GetVersionUrl(DateTime targetDate)
+    private static IEnumerable<string> GetCandidateVersionUrls(DateTime targetDate)
     {
-        // Calculate version number based on date
-        // VS Code versioning: year.month starting from some base
-        // v1.109 is January 2026, so we calculate based on that
-        // The pattern is: v1_{baseVersion + monthsFromBase}
-        
+        var releaseMonth = GetReleaseMonth(targetDate);
+        var nextMonth = releaseMonth.AddMonths(1);
+
+        var urls = new List<string>
+        {
+            GetVersionUrlForMonth(releaseMonth),
+            GetVersionUrlForMonth(nextMonth)
+        };
+
+        return urls.Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Gets the URL for the version page based on a release month.
+    /// VS Code uses version numbers like v1_109 for January 2026.
+    /// </summary>
+    private static string GetVersionUrlForMonth(DateTime releaseMonth)
+    {
         // Reference point: v1.109 = January 2026
         var referenceDate = new DateTime(2026, 1, 1);
         var referenceVersion = 109;
-        
-        var monthsDiff = ((targetDate.Year - referenceDate.Year) * 12) + targetDate.Month - referenceDate.Month;
+
+        var monthsDiff = ((releaseMonth.Year - referenceDate.Year) * 12) + releaseMonth.Month - referenceDate.Month;
         var version = referenceVersion + monthsDiff;
-        
+
         return $"{BaseUpdateUrl}v1_{version}";
+    }
+
+    private static DateTime GetReleaseMonth(DateTime targetDate)
+    {
+        var firstThursday = GetFirstThursdayOfMonth(targetDate.Year, targetDate.Month);
+        if (targetDate.Date < firstThursday.Date)
+        {
+            var previousMonth = targetDate.AddMonths(-1);
+            return new DateTime(previousMonth.Year, previousMonth.Month, 1);
+        }
+
+        return new DateTime(targetDate.Year, targetDate.Month, 1);
+    }
+
+    private static DateTime GetFirstThursdayOfMonth(int year, int month)
+    {
+        var firstDay = new DateTime(year, month, 1);
+        var offset = ((int)DayOfWeek.Thursday - (int)firstDay.DayOfWeek + 7) % 7;
+        return firstDay.AddDays(offset);
     }
 
     /// <summary>
