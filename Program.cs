@@ -31,6 +31,7 @@ var host = new HostBuilder()
         services.AddSingleton<TwitterApiClient>();
         services.AddSingleton<TweetFormatterService>();
         services.AddSingleton<StateTrackingService>();
+        services.AddSingleton<VSCodeReleaseNotesService>();
     })
     .Build();
 
