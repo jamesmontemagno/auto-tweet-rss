@@ -26,8 +26,9 @@ public class VSCodeInsidersFunction
     /// </summary>
     /// <remarks>
     /// Optional query parameters:
-    /// - date: Specific date in yyyy-MM-dd format (defaults to today)
+    /// - date: Specific date in yyyy-MM-dd format (defaults to today), or "full" for entire current release
     /// - format: Response format - "json" or "text" (defaults to "json")
+    /// - forceRefresh: Set to "true" to bypass cache and generate new summary (defaults to "false")
     /// </remarks>
     [Function("VSCodeInsiders")]
     public async Task<HttpResponseData> Run(
@@ -42,13 +43,20 @@ public class VSCodeInsidersFunction
             // Parse optional date parameter
             var dateParam = GetQueryParameter(req, "date");
             DateTime targetDate;
+            bool isFullRelease = false;
             
             if (!string.IsNullOrEmpty(dateParam))
             {
-                if (!DateTime.TryParseExact(dateParam, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out targetDate))
+                // Check if user wants full release notes
+                if (dateParam.Equals("full", StringComparison.OrdinalIgnoreCase))
+                {
+                    isFullRelease = true;
+                    targetDate = DateTime.UtcNow.Date; // Use today for cache key
+                }
+                else if (!DateTime.TryParseExact(dateParam, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out targetDate))
                 {
                     response.StatusCode = HttpStatusCode.BadRequest;
-                    await response.WriteStringAsync($"Invalid date format: {dateParam}. Use yyyy-MM-dd format.");
+                    await response.WriteStringAsync($"Invalid date format: {dateParam}. Use yyyy-MM-dd format or 'full'.");
                     return response;
                 }
             }
@@ -57,10 +65,19 @@ public class VSCodeInsidersFunction
                 targetDate = DateTime.UtcNow.Date;
             }
 
-            _logger.LogInformation("Fetching VS Code Insiders release notes for date: {Date}", targetDate.ToString("yyyy-MM-dd"));
+            _logger.LogInformation("Fetching VS Code Insiders release notes for {Mode}: {Date}", 
+                isFullRelease ? "full release" : "date", targetDate.ToString("yyyy-MM-dd"));
 
-            // Fetch release notes for the date
-            var releaseNotes = await _releaseNotesService.GetReleaseNotesForDateAsync(targetDate);
+            // Fetch release notes
+            VSCodeReleaseNotes? releaseNotes;
+            if (isFullRelease)
+            {
+                releaseNotes = await _releaseNotesService.GetFullReleaseNotesAsync();
+            }
+            else
+            {
+                releaseNotes = await _releaseNotesService.GetReleaseNotesForDateAsync(targetDate);
+            }
 
             if (releaseNotes == null || releaseNotes.Features.Count == 0)
             {
@@ -84,10 +101,15 @@ public class VSCodeInsidersFunction
             }
 
             // Generate AI-powered summary
-            var summary = await _releaseNotesService.GenerateSummaryAsync(releaseNotes);
+            var format = GetQueryParameter(req, "format")?.ToLowerInvariant() ?? "json";
+            var forceRefreshParam = GetQueryParameter(req, "forceRefresh")?.ToLowerInvariant();
+            var forceRefresh = forceRefreshParam == "true" || forceRefreshParam == "1";
+            
+            // Use different cache key format for full releases
+            var cacheFormat = isFullRelease ? $"full-{format}" : format;
+            var summary = await _releaseNotesService.GenerateSummaryAsync(releaseNotes, format: cacheFormat, forceRefresh: forceRefresh);
 
             // Determine response format
-            var format = GetQueryParameter(req, "format")?.ToLowerInvariant() ?? "json";
 
             if (format == "text")
             {
@@ -104,7 +126,7 @@ public class VSCodeInsidersFunction
                 
                 var jsonResult = new VSCodeInsidersResponse
                 {
-                    Date = targetDate.ToString("yyyy-MM-dd"),
+                    Date = isFullRelease ? "full" : targetDate.ToString("yyyy-MM-dd"),
                     HasUpdates = true,
                     Summary = summary,
                     Features = releaseNotes.Features.Select(f => new FeatureResponse

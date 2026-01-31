@@ -12,6 +12,7 @@ public partial class VSCodeReleaseNotesService
     private readonly ILogger<VSCodeReleaseNotesService> _logger;
     private readonly HttpClient _httpClient;
     private readonly ReleaseSummarizerService? _releaseSummarizer;
+    private readonly VSCodeSummaryCacheService? _cacheService;
     
     // Base URL for VS Code updates - version changes monthly
     private const string BaseUpdateUrl = "https://code.visualstudio.com/updates/";
@@ -30,11 +31,13 @@ public partial class VSCodeReleaseNotesService
     public VSCodeReleaseNotesService(
         ILogger<VSCodeReleaseNotesService> logger,
         IHttpClientFactory httpClientFactory,
-        ReleaseSummarizerService? releaseSummarizer = null)
+        ReleaseSummarizerService? releaseSummarizer = null,
+        VSCodeSummaryCacheService? cacheService = null)
     {
         _logger = logger;
         _httpClient = httpClientFactory.CreateClient();
         _releaseSummarizer = releaseSummarizer;
+        _cacheService = cacheService;
     }
 
     /// <summary>
@@ -99,36 +102,110 @@ public partial class VSCodeReleaseNotesService
     }
 
     /// <summary>
+    /// Gets the full VS Code Insiders release notes for the current version
+    /// </summary>
+    /// <returns>All release notes from the current version page</returns>
+    public async Task<VSCodeReleaseNotes?> GetFullReleaseNotesAsync()
+    {
+        var today = DateTime.UtcNow.Date;
+        
+        foreach (var versionUrl in GetCandidateVersionUrls(today))
+        {
+            try
+            {
+                _logger.LogInformation("Fetching full VS Code Insiders release notes from {Url}", versionUrl);
+
+                var html = await _httpClient.GetStringAsync(versionUrl);
+                var doc = new HtmlDocument();
+                doc.LoadHtml(html);
+
+                // Parse all features without date filtering
+                var features = ParseAllFeatures(doc);
+
+                if (features.Count == 0)
+                {
+                    _logger.LogInformation("No release notes found at {Url}", versionUrl);
+                    continue;
+                }
+
+                _logger.LogInformation("Found {Count} total features at {Url}", features.Count, versionUrl);
+
+                // Use today's date as the reference date for the full release
+                return new VSCodeReleaseNotes
+                {
+                    Date = today,
+                    Features = features,
+                    VersionUrl = versionUrl
+                };
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", versionUrl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", versionUrl);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Generates an AI-powered summary of the release notes
     /// </summary>
     /// <param name="notes">The release notes to summarize</param>
     /// <param name="maxLength">Maximum summary length in characters</param>
+    /// <param name="format">Format identifier for caching (e.g., "text", "json")</param>
+    /// <param name="forceRefresh">If true, bypasses cache and generates a new summary</param>
     /// <returns>AI-generated summary</returns>
-    public async Task<string> GenerateSummaryAsync(VSCodeReleaseNotes notes, int maxLength = 500)
+    public async Task<string> GenerateSummaryAsync(VSCodeReleaseNotes notes, int maxLength = 500, string format = "default", bool forceRefresh = false)
     {
+        // Try to get from cache first (unless forceRefresh is true)
+        if (!forceRefresh && _cacheService != null)
+        {
+            var cachedSummary = await _cacheService.GetCachedSummaryAsync(notes.Date, format);
+            if (cachedSummary != null)
+            {
+                _logger.LogInformation("Using cached summary for {Date} with format {Format}", 
+                    notes.Date.ToString("yyyy-MM-dd"), format);
+                return cachedSummary;
+            }
+        }
+
+        // Generate new summary
+        string summary;
         if (_releaseSummarizer == null)
         {
-            return GenerateFallbackSummary(notes);
+            summary = GenerateFallbackSummary(notes);
+        }
+        else
+        {
+            try
+            {
+                // Build content string from features
+                var content = string.Join("\n", notes.Features.Select(f => $"- {f.Title}: {f.Description}"));
+                
+                summary = await _releaseSummarizer.SummarizeReleaseAsync(
+                    $"VS Code Insiders {notes.Date:MMMM d, yyyy}", 
+                    content, 
+                    maxLength, 
+                    feedType: "vscode");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "AI summarization failed, using fallback");
+                summary = GenerateFallbackSummary(notes);
+            }
         }
 
-        try
+        // Cache the generated summary
+        if (_cacheService != null)
         {
-            // Build content string from features
-            var content = string.Join("\n", notes.Features.Select(f => $"- {f.Title}: {f.Description}"));
-            
-            var summary = await _releaseSummarizer.SummarizeReleaseAsync(
-                $"VS Code Insiders {notes.Date:MMMM d, yyyy}", 
-                content, 
-                maxLength, 
-                feedType: "vscode");
+            await _cacheService.SetCachedSummaryAsync(notes.Date, summary, format);
+        }
 
-            return summary;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "AI summarization failed, using fallback");
-            return GenerateFallbackSummary(notes);
-        }
+        return summary;
     }
 
     private static string GenerateFallbackSummary(VSCodeReleaseNotes notes)
@@ -199,6 +276,30 @@ public partial class VSCodeReleaseNotesService
         var firstDay = new DateTime(year, month, 1);
         var offset = ((int)DayOfWeek.Thursday - (int)firstDay.DayOfWeek + 7) % 7;
         return firstDay.AddDays(offset);
+    }
+
+    /// <summary>
+    /// Parses all features from the HTML document without date filtering
+    /// </summary>
+    private List<VSCodeFeature> ParseAllFeatures(HtmlDocument doc)
+    {
+        var features = new List<VSCodeFeature>();
+        
+        // Look for all headings that might contain features
+        var headings = doc.DocumentNode.SelectNodes("//h2 | //h3 | //h4");
+        if (headings == null) return features;
+
+        foreach (var heading in headings)
+        {
+            var headingText = heading.InnerText.Trim();
+            var category = headingText;
+            
+            // Extract features from this section
+            var sectionFeatures = ExtractFeaturesFromSection(heading);
+            features.AddRange(sectionFeatures);
+        }
+
+        return features;
     }
 
     /// <summary>
