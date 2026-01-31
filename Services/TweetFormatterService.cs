@@ -12,6 +12,7 @@ public partial class TweetFormatterService
     // Twitter limits
     private const int MaxTweetLength = 280;
     private const int UrlLength = 23; // t.co shortens all URLs to 23 chars
+    private const int MaxDiscordMessageLength = 2000;
     private const string Hashtag = "#GitHubCopilotCLI";
     private const string SdkHashtag = "#GitHubCopilotSDK";
     
@@ -56,6 +57,26 @@ public partial class TweetFormatterService
 
         // Fall back to manual extraction
         return FormatTweet(entry);
+    }
+
+    public string FormatDiscordChangelog(ReleaseEntry entry, bool isSdk)
+    {
+        var header = isSdk
+            ? $"{ReleaseEmoji} Copilot SDK {entry.Title} released!"
+            : $"{ReleaseEmoji} Copilot CLI v{entry.Title} released!";
+
+        var newlines = 4; // 2 between each section
+        var availableForFeatures = MaxDiscordMessageLength - header.Length - entry.Link.Length - newlines;
+        if (availableForFeatures < 0)
+        {
+            availableForFeatures = 0;
+        }
+
+        var features = isSdk
+            ? ExtractSdkSummary(entry.Content, availableForFeatures, maxItems: 5)
+            : ExtractFeatures(entry.Content, availableForFeatures, maxItems: 5);
+
+        return $"{header}\n\n{features}\n\n{entry.Link}";
     }
 
     private bool ShouldUseAiFromEnvironment()
@@ -249,7 +270,7 @@ public partial class TweetFormatterService
         return tweet;
     }
 
-    private string ExtractFeatures(string htmlContent, int maxLength)
+    private string ExtractFeatures(string htmlContent, int maxLength, int maxItems = 3)
     {
         // Decode HTML entities
         var decoded = HttpUtility.HtmlDecode(htmlContent);
@@ -282,7 +303,7 @@ public partial class TweetFormatterService
                     .Where(l => !string.IsNullOrWhiteSpace(l) && !IsDateLine(l))
                     .ToList();
                 
-                foreach (var line in lines.Take(3))
+                foreach (var line in lines.Take(maxItems))
                 {
                     var emoji = GetEmojiForFeature(line);
                     features.Add($"{emoji} {line}");
@@ -293,7 +314,7 @@ public partial class TweetFormatterService
         // Build features string, respecting max length
         var result = new List<string>();
         var currentLength = 0;
-        var maxItems = 3; // Limit to top 3 items
+        // Limit to top items
         
         foreach (var feature in features.Take(maxItems))
         {
@@ -369,7 +390,7 @@ public partial class TweetFormatterService
         return Regex.IsMatch(line.Trim(), @"^\d{4}-\d{2}-\d{2}$");
     }
 
-    private string ExtractSdkSummary(string htmlContent, int maxLength)
+    private string ExtractSdkSummary(string htmlContent, int maxLength, int maxItems = 3)
     {
         // Decode HTML entities
         var decoded = HttpUtility.HtmlDecode(htmlContent);
@@ -403,7 +424,7 @@ public partial class TweetFormatterService
         // Build summary string, respecting max length
         var result = new List<string>();
         var currentLength = 0;
-        var maxItems = 3; // Limit to top 3 items
+        // Limit to top items
         
         foreach (var change in changes.Take(maxItems))
         {

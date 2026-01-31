@@ -34,12 +34,12 @@ public class TestSummaryFunction
         try
         {
             // Validate type parameter
-            if (type.ToLowerInvariant() != "cli" && type.ToLowerInvariant() != "sdk")
-            {
-                response.StatusCode = HttpStatusCode.BadRequest;
-                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli' or 'sdk'.");
-                return response;
-            }
+        if (type.ToLowerInvariant() != "cli" && type.ToLowerInvariant() != "sdk")
+        {
+            response.StatusCode = HttpStatusCode.BadRequest;
+            await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli' or 'sdk'.");
+            return response;
+        }
 
             // Determine feed URL based on type
             string feedUrl;
@@ -84,6 +84,8 @@ public class TestSummaryFunction
                 tweet = await _tweetFormatterService.FormatTweetAsync(latestEntry, useAi: true);
             }
 
+            var discordMessage = _tweetFormatterService.FormatDiscordChangelog(latestEntry, isSdkFeed);
+
             // Return the formatted tweet
             response.StatusCode = HttpStatusCode.OK;
             response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
@@ -94,6 +96,9 @@ public class TestSummaryFunction
             output += $"Formatted Tweet ({tweet.Length} chars):\n";
             output += "═══════════════════════════════════════\n";
             output += tweet;
+            output += "\n\nFormatted Discord Message:\n";
+            output += "═══════════════════════════════════════\n";
+            output += discordMessage;
             
             await response.WriteStringAsync(output);
             

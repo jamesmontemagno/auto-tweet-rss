@@ -76,7 +76,9 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     "AI_ENDPOINT": "<your-azure-openai-endpoint>",
     "AI_API_KEY": "<your-azure-openai-api-key>",
     "AI_MODEL": "gpt-5-nano",
-    "ENABLE_AI_SUMMARIES": "false"
+    "ENABLE_AI_SUMMARIES": "false",
+    "ENABLE_DISCORD_POSTS": "false",
+    "DISCORD_WEBHOOK_URL": "<your-discord-webhook-url>"
   }
 }
 ```
@@ -98,6 +100,17 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
 | `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-5-nano`) |
 | `ENABLE_AI_SUMMARIES` | Enable AI-powered summaries for timer functions | No (default: `false`) |
+| `ENABLE_DISCORD_POSTS` | Enable Discord webhook posts | No (default: `false`) |
+| `DISCORD_WEBHOOK_URL` | Discord incoming webhook URL | No (required if `ENABLE_DISCORD_POSTS=true`) |
+
+### Setting up a Discord Webhook
+
+1. Open your Discord server and go to **Server Settings** → **Integrations**.
+2. Click **Webhooks** → **New Webhook**.
+3. Pick a channel, set a name/icon, and copy the **Webhook URL**.
+4. Set the following environment variables:
+   - `ENABLE_DISCORD_POSTS=true`
+   - `DISCORD_WEBHOOK_URL=<your-webhook-url>`
 
 ### Getting Twitter OAuth 1.0a Credentials
 

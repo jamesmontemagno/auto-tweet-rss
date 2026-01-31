@@ -11,19 +11,22 @@ public class SdkReleaseNotifierFunction
     private readonly TwitterApiClient _twitterApiClient;
     private readonly TweetFormatterService _tweetFormatterService;
     private readonly StateTrackingService _stateTrackingService;
+    private readonly DiscordWebhookClient _discordWebhookClient;
 
     public SdkReleaseNotifierFunction(
         ILogger<SdkReleaseNotifierFunction> logger,
         RssFeedService rssFeedService,
         TwitterApiClient twitterApiClient,
         TweetFormatterService tweetFormatterService,
-        StateTrackingService stateTrackingService)
+        StateTrackingService stateTrackingService,
+        DiscordWebhookClient discordWebhookClient)
     {
         _logger = logger;
         _rssFeedService = rssFeedService;
         _twitterApiClient = twitterApiClient;
         _tweetFormatterService = tweetFormatterService;
         _stateTrackingService = stateTrackingService;
+        _discordWebhookClient = discordWebhookClient;
     }
 
     [Function("SdkReleaseNotifier")]
@@ -69,6 +72,17 @@ public class SdkReleaseNotifierFunction
 
                 // Post to Twitter
                 var success = await _twitterApiClient.PostTweetAsync(tweet);
+
+                if (_discordWebhookClient.TryGetWebhookUrl(out var discordWebhookUrl))
+                {
+                    var discordMessage = _tweetFormatterService.FormatDiscordChangelog(entry, isSdk: true);
+                    _logger.LogInformation("Formatted SDK Discord message ({Length} chars):\n{Message}", discordMessage.Length, discordMessage);
+                    var discordSuccess = await _discordWebhookClient.PostMessageAsync(discordWebhookUrl, discordMessage);
+                    if (!discordSuccess)
+                    {
+                        _logger.LogWarning("Failed to post Discord message for SDK release: {Title}", entry.Title);
+                    }
+                }
                 
                 if (success)
                 {
