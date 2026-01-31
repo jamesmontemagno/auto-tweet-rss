@@ -250,8 +250,63 @@ Example output format (when total items = 4, showing 4):
 🐛 Fixed context window overflow
 ✨ Support for Rust language";
 
-    private static string BuildVSCodeUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
-        $@"Summarize the following VS Code Insiders release notes for {releaseTitle}.
+    private static string BuildVSCodeUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
+    {
+        // Check if this is a rich/full summary (longer maxLength)
+        var isRichSummary = maxLength > 1000;
+        
+        if (isRichSummary)
+        {
+            return $@"Create a comprehensive, detailed summary of the following VS Code Insiders release for {releaseTitle}.
+
+Release Content:
+{releaseContent}
+
+Total items in release: {totalItemCount}
+
+Requirements:
+- This is a FULL RELEASE SUMMARY - be comprehensive and detailed
+- Start with 3-5 sentences providing a high-level overview of the major themes and improvements
+- Maximum length: {maxLength} characters (you have plenty of space - use it wisely)
+- Group features by category (e.g., Chat, Terminal, Editor, Extensions, etc.)
+- Include as many important features as possible, organized by their categories
+- NEVER include user names, contributor names, or issue/PR numbers
+- Use emojis strategically to make it visually appealing and scannable
+- Use clear category headers to organize the features
+- Keep individual feature descriptions informative but concise (50-80 chars each)
+- If there are more items than you can include, add ""...and X more"" at the end
+- DO NOT include markdown headers with #
+- Make it exciting and highlight the most impactful changes
+
+Example output format:
+VS Code Insiders delivers a major update with significant improvements across chat, terminal, and editor experiences. This release focuses on performance, discoverability, and enhanced workflows. New AI-powered features and refined UI elements make development more efficient.
+
+🤖 Chat & AI:
+✨ Improved inline chat discoverability with new UI
+✨ Chat overlay hover interactions enhanced
+⚡ Better performance for long chat sessions
+✨ New @workspace context improvements
+
+⌨️ Terminal:
+✨ Sticky scroll setting for better navigation
+⚡ Faster rendering for large outputs
+🐛 Fixed Unicode character display issues
+
+✏️ Editor:
+✨ New IntelliSense improvements for TypeScript
+✨ Multi-cursor enhancements
+🎨 Refined syntax highlighting for JSX
+⚡ Improved file watcher performance
+
+🔧 Extensions & Settings:
+✨ New extension marketplace filters
+🔒 Enhanced security for extension installations
+📖 Better extension documentation display
+
+...and 15 more updates across debugging, source control, and themes.";
+        }
+        
+        return $@"Summarize the following VS Code Insiders release notes for {releaseTitle}.
 
 Release Content:
 {releaseContent}
@@ -280,4 +335,5 @@ VS Code Insiders brings exciting updates to the chat experience and terminal fun
 🔧 New terminal sticky scroll setting
 🎨 Chat overlay hover UI enhanced
 ...and 3 more";
+    }
 }

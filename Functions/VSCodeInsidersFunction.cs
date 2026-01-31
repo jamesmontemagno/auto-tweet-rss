@@ -105,9 +105,10 @@ public class VSCodeInsidersFunction
             var forceRefreshParam = GetQueryParameter(req, "forceRefresh")?.ToLowerInvariant();
             var forceRefresh = forceRefreshParam == "true" || forceRefreshParam == "1";
             
-            // Use different cache key format for full releases
+            // Use different cache key format and much longer summary for full releases
             var cacheFormat = isFullRelease ? $"full-{format}" : format;
-            var summary = await _releaseNotesService.GenerateSummaryAsync(releaseNotes, format: cacheFormat, forceRefresh: forceRefresh);
+            var maxLength = isFullRelease ? 2000 : 500; // Rich summary for full releases
+            var summary = await _releaseNotesService.GenerateSummaryAsync(releaseNotes, maxLength: maxLength, format: cacheFormat, forceRefresh: forceRefresh);
 
             // Determine response format
 
