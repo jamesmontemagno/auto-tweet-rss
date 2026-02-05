@@ -2,6 +2,19 @@
 
 An Azure Function that monitors GitHub Copilot releases RSS feeds and automatically tweets about new stable releases.
 
+## Table of Contents
+
+- [Features](#features)
+- [Tweet Formats](#tweet-formats)
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+- [Local Development](#local-development)
+- [Functions and Endpoints](#functions-and-endpoints)
+- [Project Structure](#project-structure)
+- [Deployment to Azure](#deployment-to-azure)
+- [How It Works](#how-it-works)
+- [License](#license)
+
 ## Features
 
 - Monitors both GitHub Copilot CLI and Copilot SDK Atom feeds
@@ -161,6 +174,101 @@ To enable AI-powered summaries:
    ```
    
    This fetches the latest release and generates the tweet format without posting to Twitter.
+
+## Functions and Endpoints
+
+### Authorization Notes
+
+- Local dev (`func start`) uses `http://localhost:7071/api/...` and does not require a key by default.
+- Deployed Function Apps require a function key unless you change the auth level. Use `?code=<function-key>` or set `x-functions-key`.
+
+### HTTP Endpoints (local examples)
+
+**CliReleaseSummary**
+
+Generate an AI summary paragraph for a specific Copilot CLI version.
+
+- Route: `GET /api/cli-summary`
+- Params:
+   - `version` (required)
+   - `maxLength` (optional, default: 700)
+   - `format` (optional: `json` or `text`, default: `json`)
+
+```bash
+curl "http://localhost:7071/api/cli-summary?version=v1.7.0&maxLength=500&format=json"
+```
+
+**TestSummary**
+
+Preview a formatted tweet for the latest CLI or SDK release (always uses AI when configured).
+
+- Route: `GET /api/test-summary/{cli|sdk}`
+
+```bash
+curl "http://localhost:7071/api/test-summary/cli"
+curl "http://localhost:7071/api/test-summary/sdk"
+```
+
+**TestWeeklyRecap**
+
+Preview the weekly CLI recap tweet for a given week window (PT).
+
+- Route: `GET /api/test-weekly-recap`
+- Params:
+   - `date` (optional, format `yyyy-MM-dd`, sets the week end date at 10:00 AM PT)
+
+```bash
+curl "http://localhost:7071/api/test-weekly-recap"
+curl "http://localhost:7071/api/test-weekly-recap?date=2026-02-01"
+```
+
+**VSCodeInsiders**
+
+Get VS Code Insiders release notes with optional AI summary.
+
+- Route: `GET /api/vscode-insiders`
+- Params:
+   - `date` (optional: `yyyy-MM-dd`, `full`, `this week`, or `this-week`)
+   - `format` (optional: `json` or `text`, default: `json`)
+   - `forceRefresh` (optional: `true` or `false`)
+   - `aionly` (optional: `true` or `false`)
+   - `newline` (optional: `br`, `lf`, `crlf`, or `literal`)
+
+```bash
+curl "http://localhost:7071/api/vscode-insiders?date=this-week&format=json"
+curl "http://localhost:7071/api/vscode-insiders?date=full&format=text"
+```
+
+**GitHubChangelogCopilotLookup**
+
+Look up a GitHub Blog changelog entry by URL and return the description if it has a Copilot label.
+
+- Route: `POST /api/github-changelog/copilot`
+- Body:
+   - `url` (required, absolute URL)
+
+```bash
+curl -X POST "http://localhost:7071/api/github-changelog/copilot" \
+   -H "Content-Type: application/json" \
+   -d "{\"url\":\"https://github.blog/changelog/2025-01-01-example/\"}"
+```
+
+### Timer Functions
+
+**ReleaseNotifier**
+
+- Schedule: `0 */15 * * * *` (every 15 minutes)
+- Feed: `RSS_FEED_URL` (default Copilot CLI releases)
+
+**SdkReleaseNotifier**
+
+- Schedule: `0 */15 * * * *` (every 15 minutes)
+- Feed: fixed `https://github.com/github/copilot-sdk/releases.atom`
+
+**WeeklyCliRecap**
+
+- Schedule: `0 0 17,18 * * 6` (runs Saturday; posts at 10 AM PT)
+- Feed: fixed `https://github.com/github/copilot-cli/releases.atom`
 
 ## Project Structure
 
