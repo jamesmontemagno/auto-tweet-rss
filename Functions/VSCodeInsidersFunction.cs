@@ -139,6 +139,8 @@ public class VSCodeInsidersFunction
             {
                 cacheFormat = $"ai-{cacheFormat}";
             }
+            var newlineKey = NormalizeNewlineKey(newlineParam);
+            cacheFormat = $"{cacheFormat}-nl-{newlineKey}";
             var maxLength = isFullRelease ? 2000 : isThisWeek ? 900 : 500; // Rich summary for full releases
             var summary = await _releaseNotesService.GenerateSummaryAsync(
                 releaseNotes,
@@ -228,12 +230,23 @@ public class VSCodeInsidersFunction
         }
 
         var normalized = summary.Replace("\r\n", "\n", StringComparison.Ordinal);
-        return newlineParam switch
+        return NormalizeNewlineKey(newlineParam) switch
         {
             "lf" => normalized,
             "crlf" => normalized.Replace("\n", "\r\n", StringComparison.Ordinal),
             "literal" => normalized.Replace("\n", "\\n", StringComparison.Ordinal),
             _ => normalized.Replace("\n", "<br>", StringComparison.Ordinal)
+        };
+    }
+
+    private static string NormalizeNewlineKey(string newlineParam)
+    {
+        return newlineParam switch
+        {
+            "lf" => "lf",
+            "crlf" => "crlf",
+            "literal" => "literal",
+            _ => "br"
         };
     }
 
