@@ -393,65 +393,79 @@ VS Code Insiders brings exciting updates to the chat experience and terminal fun
 ...and 3 more";
     }
 
-    private static string BuildVSCodeAiUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
-        $@"Summarize ONLY the AI-related updates from the following VS Code Insiders release for {releaseTitle}.
+    private static string BuildVSCodeAiUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
+    {
+        var lines = new[]
+        {
+            $"Summarize ONLY the AI-related updates from the following VS Code Insiders release for {releaseTitle}.",
+            string.Empty,
+            "Release Content:",
+            releaseContent,
+            string.Empty,
+            $"Total items in release: {totalItemCount}",
+            $"Target items to show: {targetItems}",
+            string.Empty,
+            "Requirements:",
+            $"- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)",
+            "- Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)",
+            "- Start with 1-2 sentences summarizing AI themes for the release",
+            $"- After the summary sentences, include UP TO {targetItems} of the most important AI features",
+            "- If there are no AI-related updates, respond with: No notable AI updates in this release.",
+            "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
+            "- Use emojis to make it visually appealing",
+            "- Each feature should be on its own line",
+            "- Keep descriptions concise (aim for 40-50 characters per line)",
+            "- If you show fewer items than the total AI items, add ...and X more as the FINAL line",
+            "- DO NOT include any markdown formatting or headers",
+            "- Output ONLY the summary and formatted feature list, nothing else",
+            string.Empty,
+            "Example output format:",
+            "VS Code Insiders expands AI workflows with stronger chat actions and richer inline suggestions.",
+            string.Empty,
+            "✨ New inline chat actions for refactors",
+            "✨ Smarter @workspace context retrieval",
+            "⚡ Faster AI response streaming",
+            "...and 2 more"
+        };
 
-Release Content:
-{releaseContent}
+        return string.Join("\n", lines);
+    }
 
-Total items in release: {totalItemCount}
-Target items to show: {targetItems}
+    private static string BuildVSCodeAiWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
+    {
+        var lines = new[]
+        {
+            $"Create a weekly recap that ONLY highlights AI-related updates from the following VS Code Insiders release notes for {releaseTitle}.",
+            string.Empty,
+            "Release Content:",
+            releaseContent,
+            string.Empty,
+            $"Total items in release window: {totalItemCount}",
+            $"Target items to show: {targetItems}",
+            string.Empty,
+            "Requirements:",
+            $"- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)",
+            "- Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)",
+            "- Start with 1-2 sentences summarizing AI themes across the week",
+            $"- After the summary sentences, include UP TO {targetItems} of the most important AI features",
+            "- If there are no AI-related updates, respond with: No notable AI updates this week.",
+            "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
+            "- Use emojis to make it visually appealing",
+            "- Each feature should be on its own line",
+            "- Keep descriptions concise (aim for 35-45 characters per line)",
+            "- If you show fewer items than the total AI items, add ...and X more as the FINAL line",
+            "- DO NOT include any markdown formatting or headers",
+            "- Output ONLY the summary and formatted feature list, nothing else",
+            string.Empty,
+            "Example output format:",
+            "This week brings stronger AI chat workflows and better inline suggestion control.",
+            string.Empty,
+            "✨ New chat actions for docs edits",
+            "✨ Smarter prompt variables in chat",
+            "⚡ Faster AI responses in large repos",
+            "...and 3 more"
+        };
 
-Requirements:
-- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
-- Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)
-- Start with 1-2 sentences summarizing AI themes for the release
-- After the summary sentences, include UP TO {targetItems} of the most important AI features
-- If there are no AI-related updates, respond with: No notable AI updates in this release.
-- NEVER include user names, contributor names, or issue/PR numbers in the summary
-- Use emojis to make it visually appealing
-- Each feature should be on its own line
-- Keep descriptions concise (aim for 40-50 characters per line)
-- If you show fewer items than the total AI items, add ...and X more as the FINAL line
-- DO NOT include any markdown formatting or headers
-- Output ONLY the summary and formatted feature list, nothing else
-
-Example output format:
-VS Code Insiders expands AI workflows with stronger chat actions and richer inline suggestions.
-
-✨ New inline chat actions for refactors
-✨ Smarter @workspace context retrieval
-⚡ Faster AI response streaming
-...and 2 more";
-
-    private static string BuildVSCodeAiWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
-        $@"Create a weekly recap that ONLY highlights AI-related updates from the following VS Code Insiders release notes for {releaseTitle}.
-
-Release Content:
-{releaseContent}
-
-Total items in release window: {totalItemCount}
-Target items to show: {targetItems}
-
-Requirements:
-- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
-- Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)
-- Start with 1-2 sentences summarizing AI themes across the week
-- After the summary sentences, include UP TO {targetItems} of the most important AI features
-- If there are no AI-related updates, respond with: No notable AI updates this week.
-- NEVER include user names, contributor names, or issue/PR numbers in the summary
-- Use emojis to make it visually appealing
-- Each feature should be on its own line
-- Keep descriptions concise (aim for 35-45 characters per line)
-- If you show fewer items than the total AI items, add ...and X more as the FINAL line
-- DO NOT include any markdown formatting or headers
-- Output ONLY the summary and formatted feature list, nothing else
-
-Example output format:
-This week brings stronger AI chat workflows and better inline suggestion control.
-
-✨ New chat actions for docs edits
-✨ Smarter prompt variables in chat
-⚡ Faster AI responses in large repos
-...and 3 more";
+        return string.Join("\n", lines);
+    }
 }
