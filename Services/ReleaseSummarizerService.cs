@@ -407,12 +407,12 @@ Requirements:
 - Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)
 - Start with 1-2 sentences summarizing AI themes for the release
 - After the summary sentences, include UP TO {targetItems} of the most important AI features
-- If there are no AI-related updates, respond with ""No notable AI updates in this release.""
+- If there are no AI-related updates, respond with: No notable AI updates in this release.
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - Use emojis to make it visually appealing
 - Each feature should be on its own line
 - Keep descriptions concise (aim for 40-50 characters per line)
-- If you show fewer items than the total AI items, add ""...and X more"" as the FINAL line
+- If you show fewer items than the total AI items, add ...and X more as the FINAL line
 - DO NOT include any markdown formatting or headers
 - Output ONLY the summary and formatted feature list, nothing else
 
@@ -438,12 +438,12 @@ Requirements:
 - Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)
 - Start with 1-2 sentences summarizing AI themes across the week
 - After the summary sentences, include UP TO {targetItems} of the most important AI features
-- If there are no AI-related updates, respond with ""No notable AI updates this week.""
+- If there are no AI-related updates, respond with: No notable AI updates this week.
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - Use emojis to make it visually appealing
 - Each feature should be on its own line
 - Keep descriptions concise (aim for 35-45 characters per line)
-- If you show fewer items than the total AI items, add ""...and X more"" as the FINAL line
+- If you show fewer items than the total AI items, add ...and X more as the FINAL line
 - DO NOT include any markdown formatting or headers
 - Output ONLY the summary and formatted feature list, nothing else
 
