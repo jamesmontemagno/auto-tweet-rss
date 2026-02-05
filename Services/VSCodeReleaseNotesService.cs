@@ -102,6 +102,87 @@ public partial class VSCodeReleaseNotesService
     }
 
     /// <summary>
+    /// Gets VS Code Insiders release notes for a date range (inclusive)
+    /// </summary>
+    /// <param name="startDate">Start date for the range</param>
+    /// <param name="endDate">End date for the range</param>
+    /// <returns>Release notes if updates exist for the range, null otherwise</returns>
+    public async Task<VSCodeReleaseNotes?> GetReleaseNotesForDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        if (startDate > endDate)
+        {
+            (startDate, endDate) = (endDate, startDate);
+        }
+
+        var candidateUrls = GetCandidateVersionUrls(endDate)
+            .Concat(GetCandidateVersionUrls(startDate))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var allFeatures = new List<VSCodeFeature>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? versionUrlForResponse = null;
+
+        foreach (var versionUrl in candidateUrls)
+        {
+            try
+            {
+                _logger.LogInformation("Fetching VS Code Insiders release notes from {Url} for range {StartDate} to {EndDate}",
+                    versionUrl, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+
+                var html = await _httpClient.GetStringAsync(versionUrl);
+                var doc = new HtmlDocument();
+                doc.LoadHtml(html);
+
+                var features = ParseFeaturesForDateRange(doc, startDate, endDate);
+                if (features.Count == 0)
+                {
+                    _logger.LogInformation("No release notes found for range {StartDate} to {EndDate} at {Url}",
+                        startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), versionUrl);
+                    continue;
+                }
+
+                _logger.LogInformation("Found {Count} features for range {StartDate} to {EndDate} at {Url}",
+                    features.Count, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), versionUrl);
+
+                if (versionUrlForResponse == null)
+                {
+                    versionUrlForResponse = versionUrl;
+                }
+
+                foreach (var feature in features)
+                {
+                    var key = $"{feature.Title}|{feature.Description}|{feature.Category}";
+                    if (seen.Add(key))
+                    {
+                        allFeatures.Add(feature);
+                    }
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", versionUrl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", versionUrl);
+            }
+        }
+
+        if (allFeatures.Count == 0)
+        {
+            return null;
+        }
+
+        return new VSCodeReleaseNotes
+        {
+            Date = endDate.Date,
+            Features = allFeatures,
+            VersionUrl = versionUrlForResponse ?? candidateUrls.First()
+        };
+    }
+
+    /// <summary>
     /// Gets the full VS Code Insiders release notes for the current version
     /// </summary>
     /// <returns>All release notes from the current version page</returns>
@@ -158,8 +239,16 @@ public partial class VSCodeReleaseNotesService
     /// <param name="maxLength">Maximum summary length in characters</param>
     /// <param name="format">Format identifier for caching (e.g., "text", "json")</param>
     /// <param name="forceRefresh">If true, bypasses cache and generates a new summary</param>
+    /// <param name="aiOnly">If true, summarize only AI-related features</param>
+    /// <param name="isThisWeek">If true, use the weekly prompt variant</param>
     /// <returns>AI-generated summary</returns>
-    public async Task<string> GenerateSummaryAsync(VSCodeReleaseNotes notes, int maxLength = 500, string format = "default", bool forceRefresh = false)
+    public async Task<string> GenerateSummaryAsync(
+        VSCodeReleaseNotes notes,
+        int maxLength = 500,
+        string format = "default",
+        bool forceRefresh = false,
+        bool aiOnly = false,
+        bool isThisWeek = false)
     {
         // Try to get from cache first (unless forceRefresh is true)
         if (!forceRefresh && _cacheService != null)
@@ -185,12 +274,16 @@ public partial class VSCodeReleaseNotesService
             {
                 // Build content string from features
                 var content = string.Join("\n", notes.Features.Select(f => $"- {f.Title}: {f.Description}"));
-                
+
+                var feedType = aiOnly
+                    ? (isThisWeek ? "vscode-week-ai" : "vscode-ai")
+                    : "vscode";
+
                 summary = await _releaseSummarizer.SummarizeReleaseAsync(
-                    $"VS Code Insiders {notes.Date:MMMM d, yyyy}", 
-                    content, 
-                    maxLength, 
-                    feedType: "vscode");
+                    $"VS Code Insiders {notes.Date:MMMM d, yyyy}",
+                    content,
+                    maxLength,
+                    feedType: feedType);
             }
             catch (Exception ex)
             {
@@ -329,6 +422,38 @@ public partial class VSCodeReleaseNotesService
             if (parsedDate?.Date != targetDate.Date) continue;
             
             // Found a matching date section - extract features from the following content
+            var sectionFeatures = ExtractFeaturesFromSection(heading);
+            features.AddRange(sectionFeatures);
+        }
+
+        return features;
+    }
+
+    /// <summary>
+    /// Parses features from the HTML document for a date range (inclusive)
+    /// </summary>
+    private List<VSCodeFeature> ParseFeaturesForDateRange(HtmlDocument doc, DateTime startDate, DateTime endDate)
+    {
+        var features = new List<VSCodeFeature>();
+
+        var headings = doc.DocumentNode.SelectNodes("//h2 | //h3 | //h4");
+        if (headings == null) return features;
+
+        foreach (var heading in headings)
+        {
+            var headingText = heading.InnerText.Trim();
+            var dateMatch = DatePattern().Match(headingText);
+
+            if (!dateMatch.Success) continue;
+
+            var parsedDate = ParseDateFromMatch(dateMatch, endDate.Year);
+            if (parsedDate == null) continue;
+
+            if (parsedDate.Value.Date < startDate.Date || parsedDate.Value.Date > endDate.Date)
+            {
+                continue;
+            }
+
             var sectionFeatures = ExtractFeaturesFromSection(heading);
             features.AddRange(sectionFeatures);
         }

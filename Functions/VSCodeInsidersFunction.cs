@@ -26,9 +26,12 @@ public class VSCodeInsidersFunction
     /// </summary>
     /// <remarks>
     /// Optional query parameters:
-    /// - date: Specific date in yyyy-MM-dd format (defaults to today), or "full" for entire current release
+    /// - date: Specific date in yyyy-MM-dd format (defaults to today), "full" for entire current release,
+    ///         or "this week"/"this-week" for the last 7 days
     /// - format: Response format - "json" or "text" (defaults to "json")
     /// - forceRefresh: Set to "true" to bypass cache and generate new summary (defaults to "false")
+    /// - aionly: Set to "true" to summarize only AI-related features (defaults to "false")
+    /// - newline: "br" (default), "lf", "crlf", or "literal" to control summary newlines in JSON
     /// </remarks>
     [Function("VSCodeInsiders")]
     public async Task<HttpResponseData> Run(
@@ -44,6 +47,9 @@ public class VSCodeInsidersFunction
             var dateParam = GetQueryParameter(req, "date");
             DateTime targetDate;
             bool isFullRelease = false;
+            bool isThisWeek = false;
+            DateTime rangeStart = DateTime.MinValue;
+            DateTime rangeEnd = DateTime.MinValue;
             
             if (!string.IsNullOrEmpty(dateParam))
             {
@@ -53,10 +59,17 @@ public class VSCodeInsidersFunction
                     isFullRelease = true;
                     targetDate = DateTime.UtcNow.Date; // Use today for cache key
                 }
+                else if (IsThisWeekParam(dateParam))
+                {
+                    isThisWeek = true;
+                    rangeEnd = DateTime.UtcNow.Date;
+                    rangeStart = rangeEnd.AddDays(-6); // Last 7 days, inclusive
+                    targetDate = rangeEnd; // Use end date for cache key
+                }
                 else if (!DateTime.TryParseExact(dateParam, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out targetDate))
                 {
                     response.StatusCode = HttpStatusCode.BadRequest;
-                    await response.WriteStringAsync($"Invalid date format: {dateParam}. Use yyyy-MM-dd format or 'full'.");
+                    await response.WriteStringAsync($"Invalid date format: {dateParam}. Use yyyy-MM-dd format, 'full', or 'this week'.");
                     return response;
                 }
             }
@@ -65,14 +78,26 @@ public class VSCodeInsidersFunction
                 targetDate = DateTime.UtcNow.Date;
             }
 
-            _logger.LogInformation("Fetching VS Code Insiders release notes for {Mode}: {Date}", 
-                isFullRelease ? "full release" : "date", targetDate.ToString("yyyy-MM-dd"));
+            if (isThisWeek)
+            {
+                _logger.LogInformation("Fetching VS Code Insiders release notes for last 7 days: {StartDate} to {EndDate}",
+                    rangeStart.ToString("yyyy-MM-dd"), rangeEnd.ToString("yyyy-MM-dd"));
+            }
+            else
+            {
+                _logger.LogInformation("Fetching VS Code Insiders release notes for {Mode}: {Date}",
+                    isFullRelease ? "full release" : "date", targetDate.ToString("yyyy-MM-dd"));
+            }
 
             // Fetch release notes
             VSCodeReleaseNotes? releaseNotes;
             if (isFullRelease)
             {
                 releaseNotes = await _releaseNotesService.GetFullReleaseNotesAsync();
+            }
+            else if (isThisWeek)
+            {
+                releaseNotes = await _releaseNotesService.GetReleaseNotesForDateRangeAsync(rangeStart, rangeEnd);
             }
             else
             {
@@ -89,7 +114,7 @@ public class VSCodeInsidersFunction
                 
                 var emptyResult = new VSCodeInsidersResponse
                 {
-                    Date = targetDate.ToString("yyyy-MM-dd"),
+                    Date = isThisWeek ? "this-week" : targetDate.ToString("yyyy-MM-dd"),
                     HasUpdates = false,
                     Summary = null,
                     Features = [],
@@ -104,11 +129,39 @@ public class VSCodeInsidersFunction
             var format = GetQueryParameter(req, "format")?.ToLowerInvariant() ?? "json";
             var forceRefreshParam = GetQueryParameter(req, "forceRefresh")?.ToLowerInvariant();
             var forceRefresh = forceRefreshParam == "true" || forceRefreshParam == "1";
+            var aiOnlyParam = GetQueryParameter(req, "aionly")?.ToLowerInvariant();
+            var aiOnly = aiOnlyParam == "true" || aiOnlyParam == "1";
+            var newlineParam = GetQueryParameter(req, "newline")?.ToLowerInvariant() ?? "br";
             
             // Use different cache key format and much longer summary for full releases
-            var cacheFormat = isFullRelease ? $"full-{format}" : format;
-            var maxLength = isFullRelease ? 2000 : 500; // Rich summary for full releases
-            var summary = await _releaseNotesService.GenerateSummaryAsync(releaseNotes, maxLength: maxLength, format: cacheFormat, forceRefresh: forceRefresh);
+            var cacheFormat = isFullRelease ? $"full-{format}" : isThisWeek ? $"week-{format}" : format;
+            if (aiOnly)
+            {
+                cacheFormat = $"ai-{cacheFormat}";
+            }
+            var maxLength = isFullRelease ? 2000 : isThisWeek ? 900 : 500; // Rich summary for full releases
+            var summary = await _releaseNotesService.GenerateSummaryAsync(
+                releaseNotes,
+                maxLength: maxLength,
+                format: cacheFormat,
+                forceRefresh: forceRefresh,
+                aiOnly: aiOnly,
+                isThisWeek: isThisWeek);
+
+            summary = NormalizeSummaryNewlines(summary, newlineParam);
+
+            var featuresForResponse = isThisWeek
+                ? releaseNotes.Features.Take(8).ToList()
+                : releaseNotes.Features;
+
+            var displayNotes = isThisWeek
+                ? new VSCodeReleaseNotes
+                {
+                    Date = releaseNotes.Date,
+                    Features = featuresForResponse,
+                    VersionUrl = releaseNotes.VersionUrl
+                }
+                : releaseNotes;
 
             // Determine response format
 
@@ -117,7 +170,7 @@ public class VSCodeInsidersFunction
                 response.StatusCode = HttpStatusCode.OK;
                 response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
                 
-                var textOutput = BuildTextResponse(releaseNotes, summary);
+                var textOutput = BuildTextResponse(displayNotes, summary);
                 await response.WriteStringAsync(textOutput);
             }
             else
@@ -127,10 +180,10 @@ public class VSCodeInsidersFunction
                 
                 var jsonResult = new VSCodeInsidersResponse
                 {
-                    Date = isFullRelease ? "full" : targetDate.ToString("yyyy-MM-dd"),
+                    Date = isFullRelease ? "full" : isThisWeek ? "this-week" : targetDate.ToString("yyyy-MM-dd"),
                     HasUpdates = true,
                     Summary = summary,
-                    Features = releaseNotes.Features.Select(f => new FeatureResponse
+                    Features = featuresForResponse.Select(f => new FeatureResponse
                     {
                         Title = f.Title,
                         Description = f.Description,
@@ -158,6 +211,30 @@ public class VSCodeInsidersFunction
     {
         var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
         return query[name];
+    }
+
+    private static bool IsThisWeekParam(string dateParam)
+    {
+        return dateParam.Equals("this week", StringComparison.OrdinalIgnoreCase) ||
+               dateParam.Equals("this-week", StringComparison.OrdinalIgnoreCase) ||
+               dateParam.Equals("week", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeSummaryNewlines(string summary, string newlineParam)
+    {
+        if (string.IsNullOrEmpty(summary))
+        {
+            return summary;
+        }
+
+        var normalized = summary.Replace("\r\n", "\n", StringComparison.Ordinal);
+        return newlineParam switch
+        {
+            "lf" => normalized,
+            "crlf" => normalized.Replace("\n", "\r\n", StringComparison.Ordinal),
+            "literal" => normalized.Replace("\n", "\\n", StringComparison.Ordinal),
+            _ => normalized.Replace("\n", "<br>", StringComparison.Ordinal)
+        };
     }
 
     private static string BuildTextResponse(VSCodeReleaseNotes notes, string summary)
