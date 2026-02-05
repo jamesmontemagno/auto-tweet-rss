@@ -192,7 +192,7 @@ public partial class TweetFormatterService
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var releaseWord = releaseCount == 1 ? "release" : "releases";
         var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
-        var header = $"🗓️ Weekly Copilot CLI recap ({dateRange} PT): {releaseCount} {releaseWord}, {improvementCount} {improvementWord}.";
+        var header = $"🗓️ Weekly Copilot CLI recap ({dateRange}): {releaseCount} {releaseWord}, {improvementCount} {improvementWord}.";
 
         var highlightsPrefix = "Highlights:\n";
         var url = "https://github.com/github/copilot-cli/releases";
@@ -210,7 +210,7 @@ public partial class TweetFormatterService
         {
             try
             {
-                var combinedContent = string.Join("\n", entries.Select(e => e.Content));
+                var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
                 highlights = await _releaseSummarizer.SummarizeReleaseAsync(
                     "Copilot CLI weekly recap",
                     combinedContent,
@@ -230,8 +230,8 @@ public partial class TweetFormatterService
 
         if (string.IsNullOrWhiteSpace(highlights))
         {
-            var combinedContent = string.Join("\n", entries.Select(e => e.Content));
-            highlights = ExtractFeatures(combinedContent, availableForHighlights, maxItems: 5);
+            var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
+            highlights = ExtractFeatures(combinedContent, availableForHighlights, maxItems: 7);
         }
 
         if (string.IsNullOrWhiteSpace(highlights))
@@ -416,6 +416,22 @@ public partial class TweetFormatterService
         var startText = start.ToString("MMM d");
         var endText = end.ToString("MMM d");
         return $"{startText}-{endText}";
+    }
+
+    private static string RemoveStaffFlagItems(string htmlContent)
+    {
+        if (string.IsNullOrWhiteSpace(htmlContent))
+        {
+            return string.Empty;
+        }
+
+        var withoutStaffFlags = Regex.Replace(
+            htmlContent,
+            @"<li[^>]*>[^<]*(?:(?!</li>).)*?staff flag(?:(?!</li>).)*?</li>",
+            string.Empty,
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        return withoutStaffFlags;
     }
 
     private static string GetEmojiForFeature(string text)

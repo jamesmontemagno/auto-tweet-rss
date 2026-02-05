@@ -155,11 +155,17 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         // Calculate how many items we can likely fit
         // Estimate: emoji (2) + space (1) + average description (35-40 chars) + newline (1) = ~40 chars per item
         // Reserve space for "...and X more" suffix (~15 chars)
+        var isCliWeekly = string.Equals(feedType, "cli-weekly", StringComparison.OrdinalIgnoreCase);
         var estimatedCharsPerItem = feedType.StartsWith("cli", StringComparison.OrdinalIgnoreCase) ? 50 : 40; // CLI items tend to be longer
+        if (isCliWeekly)
+        {
+            // Weekly recaps should favor more, shorter highlights
+            estimatedCharsPerItem = 38;
+        }
         var reserveForSuffix = totalItemCount > 5 ? 15 : 0;
         var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
         // Cap at reasonable maximum to avoid token limits
-        maxItems = Math.Min(maxItems, 10);
+        maxItems = Math.Min(maxItems, isCliWeekly ? 12 : 10);
         
         if (feedType == "cli-weekly")
         {
@@ -228,12 +234,14 @@ Requirements:
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
 - Include UP TO {targetItems} of the most important/high-impact changes across the week
 - Deduplicate similar items across releases; focus on themes and top features
+- EXCLUDE any items that mention ""staff flag"" or internal labels
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - DO NOT include version numbers or dates
 - Focus ONLY on what the features do, not who contributed them
 - Use emojis to make it visually appealing
 - Each highlight should be on its own line
-- Keep each highlight line concise (aim for 40-50 characters) to maximize count
+- Keep each highlight line ultra concise (aim for 20-35 characters) to maximize count
+- Prefer short noun-phrase highlights over sentences
 - CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
 - DO NOT include any markdown formatting or headers
 - Output ONLY the formatted highlight list, nothing else
