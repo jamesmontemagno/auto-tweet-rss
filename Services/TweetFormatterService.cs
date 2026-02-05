@@ -192,7 +192,10 @@ public partial class TweetFormatterService
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var releaseWord = releaseCount == 1 ? "release" : "releases";
         var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
-        var header = $"🗓️ Weekly Copilot CLI recap ({dateRange}): {releaseCount} {releaseWord}, {improvementCount} {improvementWord}.";
+        var header = string.Join("\n",
+            $"🗓️ Weekly Copilot CLI recap ({dateRange})",
+            $"🚀 Releases: {releaseCount} {releaseWord}",
+            $"🛠️ Improvements: {improvementCount} {improvementWord}");
 
         var highlightsPrefix = "Highlights:\n";
         var url = "https://github.com/github/copilot-cli/releases";
