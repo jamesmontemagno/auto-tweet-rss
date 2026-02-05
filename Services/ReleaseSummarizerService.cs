@@ -155,12 +155,16 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         // Calculate how many items we can likely fit
         // Estimate: emoji (2) + space (1) + average description (35-40 chars) + newline (1) = ~40 chars per item
         // Reserve space for "...and X more" suffix (~15 chars)
-        var estimatedCharsPerItem = feedType == "cli" ? 50 : 40; // CLI items tend to be longer
+        var estimatedCharsPerItem = feedType.StartsWith("cli", StringComparison.OrdinalIgnoreCase) ? 50 : 40; // CLI items tend to be longer
         var reserveForSuffix = totalItemCount > 5 ? 15 : 0;
         var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
         // Cap at reasonable maximum to avoid token limits
         maxItems = Math.Min(maxItems, 10);
         
+        if (feedType == "cli-weekly")
+        {
+            return BuildCliWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
+        }
         if (feedType == "cli")
         {
             return BuildCliUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
@@ -210,6 +214,42 @@ Example output format (when total items = 3, showing 3):
 ✨ Show compaction status in timeline
 ✨ Add Esc-Esc to undo file changes
 ✨ Support for GHE Cloud remote agents";
+
+    private static string BuildCliWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
+        $@"Create a weekly recap summary of the following Copilot CLI release notes for {releaseTitle}.
+
+Release Content:
+{releaseContent}
+
+Total items in release window: {totalItemCount}
+Target items to show: {targetItems}
+
+Requirements:
+- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
+- Include UP TO {targetItems} of the most important/high-impact changes across the week
+- Deduplicate similar items across releases; focus on themes and top features
+- NEVER include user names, contributor names, or issue/PR numbers in the summary
+- DO NOT include version numbers or dates
+- Focus ONLY on what the features do, not who contributed them
+- Use emojis to make it visually appealing
+- Each highlight should be on its own line
+- Keep each highlight line concise (aim for 40-50 characters) to maximize count
+- CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
+- DO NOT include any markdown formatting or headers
+- Output ONLY the formatted highlight list, nothing else
+
+Example output format (when total items = 9, showing 5):
+✨ Smarter repo context for agents
+✨ New interactive setup flow
+⚡ Faster indexing for large workspaces
+🐛 Fixed auth refresh edge cases
+🔒 Hardened token storage behavior
+...and 4 more
+
+Example output format (when total items = 3, showing 3):
+✨ Smarter repo context for agents
+⚡ Faster indexing for large workspaces
+🐛 Fixed auth refresh edge cases";
 
     private static string BuildSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Summarize the following release notes for {releaseTitle}.

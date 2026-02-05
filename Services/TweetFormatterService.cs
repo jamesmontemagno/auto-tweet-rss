@@ -176,6 +176,81 @@ public partial class TweetFormatterService
         return tweet;
     }
 
+    public async Task<string> FormatWeeklyCliRecapTweetAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi = false)
+    {
+        if (entries == null || entries.Count == 0)
+        {
+            throw new ArgumentException("At least one release entry is required", nameof(entries));
+        }
+
+        var releaseCount = entries.Count;
+        var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
+        var releaseWord = releaseCount == 1 ? "release" : "releases";
+        var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
+        var header = $"🗓️ Weekly Copilot CLI recap ({dateRange} PT): {releaseCount} {releaseWord}, {improvementCount} {improvementWord}.";
+
+        var highlightsPrefix = "Highlights:\n";
+        var url = "https://github.com/github/copilot-cli/releases";
+        var newlines = 7; // 2 after header, 1 after prefix, 2 after highlights, 2 after URL
+        var buffer = 4; // Small buffer to avoid edge cases
+        var availableForHighlights = MaxTweetLength - header.Length - highlightsPrefix.Length - UrlLength - Hashtag.Length - newlines - buffer;
+        if (availableForHighlights < 0)
+        {
+            availableForHighlights = 0;
+        }
+
+        string highlights;
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        if (shouldUseAi && _releaseSummarizer != null)
+        {
+            try
+            {
+                var combinedContent = string.Join("\n", entries.Select(e => e.Content));
+                highlights = await _releaseSummarizer.SummarizeReleaseAsync(
+                    "Copilot CLI weekly recap",
+                    combinedContent,
+                    availableForHighlights,
+                    feedType: "cli-weekly");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate AI weekly recap summary, falling back to manual extraction");
+                highlights = string.Empty;
+            }
+        }
+        else
+        {
+            highlights = string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(highlights))
+        {
+            var combinedContent = string.Join("\n", entries.Select(e => e.Content));
+            highlights = ExtractFeatures(combinedContent, availableForHighlights, maxItems: 5);
+        }
+
+        if (string.IsNullOrWhiteSpace(highlights))
+        {
+            highlights = "✨ Highlights in this week's updates";
+        }
+
+        var tweet = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{Hashtag}";
+
+        if (tweet.Length > MaxTweetLength)
+        {
+            var overflow = tweet.Length - MaxTweetLength;
+            highlights = TruncatePreservingMoreIndicator(highlights, overflow);
+            tweet = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{Hashtag}";
+        }
+
+        return tweet;
+    }
+
     /// <summary>
     /// Truncates the summary while trying to preserve the "...and X more" indicator
     /// </summary>
@@ -249,7 +324,7 @@ public partial class TweetFormatterService
         return tweet;
     }
 
-    private string ExtractFeatures(string htmlContent, int maxLength)
+    private string ExtractFeatures(string htmlContent, int maxLength, int maxItems = 3)
     {
         // Decode HTML entities
         var decoded = HttpUtility.HtmlDecode(htmlContent);
@@ -293,8 +368,6 @@ public partial class TweetFormatterService
         // Build features string, respecting max length
         var result = new List<string>();
         var currentLength = 0;
-        var maxItems = 3; // Limit to top 3 items
-        
         foreach (var feature in features.Take(maxItems))
         {
             var featureWithNewline = result.Count > 0 ? $"\n{feature}" : feature;
@@ -336,6 +409,13 @@ public partial class TweetFormatterService
         }
         
         return string.Join("\n", result);
+    }
+
+    private static string FormatDateRange(DateTimeOffset start, DateTimeOffset end)
+    {
+        var startText = start.ToString("MMM d");
+        var endText = end.ToString("MMM d");
+        return $"{startText}-{endText}";
     }
 
     private static string GetEmojiForFeature(string text)
