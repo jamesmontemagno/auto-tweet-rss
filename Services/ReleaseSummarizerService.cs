@@ -175,6 +175,10 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         {
             return BuildCliUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
+        if (feedType == "cli-paragraph")
+        {
+            return BuildCliParagraphUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, Math.Min(maxItems, 6));
+        }
         if (feedType == "vscode")
         {
             return BuildVSCodeUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
@@ -266,6 +270,29 @@ Example output format (when total items = 3, showing 3):
 ✨ Smarter repo context for agents
 ⚡ Faster indexing for large workspaces
 🐛 Fixed auth refresh edge cases";
+
+    private static string BuildCliParagraphUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
+        $@"Write a single-paragraph summary of the following Copilot CLI release notes for {releaseTitle}.
+
+Release Content:
+{releaseContent}
+
+Total items in release: {totalItemCount}
+Target features to mention: {targetItems}
+
+Requirements:
+- Output MUST be a single paragraph with no line breaks or bullet lists
+- Use 2-4 sentences that highlight the most important features
+- Include 2-4 emojis in the paragraph to emphasize major areas
+- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
+- NEVER include user names, contributor names, or issue/PR numbers
+- Focus ONLY on what the features do, not who contributed them
+- DO NOT include the version number (it will be added separately)
+- DO NOT include markdown or headers
+- Output ONLY the paragraph, nothing else
+
+Example output:
+✨ Copilot CLI now ships faster completions and smarter context selection, making large repos feel more responsive. 🧭 New navigation and help improvements streamline common workflows, while ⚡ performance and 🐛 fix updates reduce friction across everyday commands.";
 
     private static string BuildSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Summarize the following release notes for {releaseTitle}.
