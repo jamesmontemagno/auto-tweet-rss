@@ -30,6 +30,8 @@ var host = new HostBuilder()
         services.AddSingleton<GitHubChangelogFeedService>();
         services.AddSingleton<OAuth1Helper>();
         services.AddSingleton<TwitterApiClient>();
+        services.AddSingleton<VSCodeOAuth1Helper>();
+        services.AddSingleton<VSCodeTwitterApiClient>();
         services.AddSingleton<TweetFormatterService>();
         services.AddSingleton<StateTrackingService>();
         services.AddSingleton<VSCodeSummaryCacheService>();
