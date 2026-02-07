@@ -34,6 +34,12 @@ public class VSCodeInsidersChangelogTweetFunction
     {
         _logger.LogInformation("VSCodeInsidersChangelogTweet function started at: {Time}", DateTime.UtcNow);
 
+        if (!_twitterApiClient.IsConfigured)
+        {
+            _logger.LogWarning("VS Code Twitter credentials not configured. Skipping.");
+            return;
+        }
+
         try
         {
             var pacificTimeZone = GetPacificTimeZone();
@@ -92,7 +98,7 @@ public class VSCodeInsidersChangelogTweetFunction
                 isThisWeek: false);
 
             var url = notes.VersionUrl ?? "https://code.visualstudio.com/updates";
-            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweetAsync(summary, startDate, today, url);
+            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, startDate, today, url);
 
             _logger.LogInformation("Formatted VS Code changelog tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
 

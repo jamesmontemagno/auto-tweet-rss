@@ -255,7 +255,7 @@ public partial class TweetFormatterService
         return tweet;
     }
 
-    public string FormatVSCodeChangelogTweetAsync(string summary, DateTime startDate, DateTime endDate, string url)
+    public string FormatVSCodeChangelogTweet(string summary, DateTime startDate, DateTime endDate, string url)
     {
         var startLabel = FormatShortDate(startDate);
         var endLabel = FormatShortDate(endDate);
