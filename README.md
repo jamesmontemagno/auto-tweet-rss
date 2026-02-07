@@ -80,6 +80,10 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     "TWITTER_API_SECRET": "<your-consumer-secret>",
     "TWITTER_ACCESS_TOKEN": "<your-access-token>",
     "TWITTER_ACCESS_TOKEN_SECRET": "<your-access-token-secret>",
+   "TWITTER_VSCODE_API_KEY": "<your-vscode-consumer-key>",
+   "TWITTER_VSCODE_API_SECRET": "<your-vscode-consumer-secret>",
+   "TWITTER_VSCODE_ACCESS_TOKEN": "<your-vscode-access-token>",
+   "TWITTER_VSCODE_ACCESS_TOKEN_SECRET": "<your-vscode-access-token-secret>",
     
     "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
     "STATE_CONTAINER_NAME": "release-state",
@@ -104,6 +108,10 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `TWITTER_API_SECRET` | Twitter OAuth 1.0a Consumer Secret (API Secret) | Yes |
 | `TWITTER_ACCESS_TOKEN` | Twitter OAuth 1.0a Access Token | Yes |
 | `TWITTER_ACCESS_TOKEN_SECRET` | Twitter OAuth 1.0a Access Token Secret | Yes |
+| `TWITTER_VSCODE_API_KEY` | Twitter OAuth 1.0a Consumer Key for VS Code updates | Yes (for VS Code tweets) |
+| `TWITTER_VSCODE_API_SECRET` | Twitter OAuth 1.0a Consumer Secret for VS Code updates | Yes (for VS Code tweets) |
+| `TWITTER_VSCODE_ACCESS_TOKEN` | Twitter OAuth 1.0a Access Token for VS Code updates | Yes (for VS Code tweets) |
+| `TWITTER_VSCODE_ACCESS_TOKEN_SECRET` | Twitter OAuth 1.0a Access Token Secret for VS Code updates | Yes (for VS Code tweets) |
 | `AZURE_STORAGE_CONNECTION_STRING` | Connection string for state tracking blob storage | Yes |
 | `STATE_CONTAINER_NAME` | Blob container name for state file | No (default: `release-state`) |
 | `RSS_FEED_URL` | Atom feed URL to monitor | No (default: Copilot CLI releases) |
@@ -269,6 +277,11 @@ curl -X POST "http://localhost:7071/api/github-changelog/copilot" \
 
 - Schedule: `0 0 17,18 * * 6` (runs Saturday; posts at 10 AM PT)
 - Feed: fixed `https://github.com/github/copilot-cli/releases.atom`
+
+**VSCodeInsidersChangelogTweet**
+
+- Schedule: `0 0 22,23 * * *` (daily; posts at 3 PM PT)
+- Source: VS Code updates at `https://code.visualstudio.com/updates/v1_*`
 
 ## Project Structure
 

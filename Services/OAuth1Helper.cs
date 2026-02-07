@@ -5,35 +5,46 @@ namespace AutoTweetRss.Services;
 
 public class OAuth1Helper
 {
-    private readonly string _consumerKey;
-    private readonly string _consumerSecret;
-    private readonly string _accessToken;
-    private readonly string _accessTokenSecret;
+    private readonly string? _consumerKey;
+    private readonly string? _consumerSecret;
+    private readonly string? _accessToken;
+    private readonly string? _accessTokenSecret;
 
-    public OAuth1Helper()
+    /// <summary>
+    /// Whether all required credentials are configured.
+    /// </summary>
+    public bool IsConfigured { get; }
+
+    public OAuth1Helper(string envVarPrefix = "TWITTER_")
     {
-        _consumerKey = Environment.GetEnvironmentVariable("TWITTER_API_KEY") 
-            ?? throw new InvalidOperationException("TWITTER_API_KEY not configured");
-        _consumerSecret = Environment.GetEnvironmentVariable("TWITTER_API_SECRET") 
-            ?? throw new InvalidOperationException("TWITTER_API_SECRET not configured");
-        _accessToken = Environment.GetEnvironmentVariable("TWITTER_ACCESS_TOKEN") 
-            ?? throw new InvalidOperationException("TWITTER_ACCESS_TOKEN not configured");
-        _accessTokenSecret = Environment.GetEnvironmentVariable("TWITTER_ACCESS_TOKEN_SECRET") 
-            ?? throw new InvalidOperationException("TWITTER_ACCESS_TOKEN_SECRET not configured");
+        _consumerKey = Environment.GetEnvironmentVariable($"{envVarPrefix}API_KEY");
+        _consumerSecret = Environment.GetEnvironmentVariable($"{envVarPrefix}API_SECRET");
+        _accessToken = Environment.GetEnvironmentVariable($"{envVarPrefix}ACCESS_TOKEN");
+        _accessTokenSecret = Environment.GetEnvironmentVariable($"{envVarPrefix}ACCESS_TOKEN_SECRET");
+
+        IsConfigured = !string.IsNullOrEmpty(_consumerKey)
+            && !string.IsNullOrEmpty(_consumerSecret)
+            && !string.IsNullOrEmpty(_accessToken)
+            && !string.IsNullOrEmpty(_accessTokenSecret);
     }
 
     public string GenerateAuthorizationHeader(string httpMethod, string url)
     {
+        if (!IsConfigured)
+        {
+            throw new InvalidOperationException("OAuth1 credentials are not configured.");
+        }
+
         var timestamp = GetTimestamp();
         var nonce = GetNonce();
 
         var oauthParams = new SortedDictionary<string, string>
         {
-            { "oauth_consumer_key", _consumerKey },
+            { "oauth_consumer_key", _consumerKey! },
             { "oauth_nonce", nonce },
             { "oauth_signature_method", "HMAC-SHA1" },
             { "oauth_timestamp", timestamp },
-            { "oauth_token", _accessToken },
+            { "oauth_token", _accessToken! },
             { "oauth_version", "1.0" }
         };
 
@@ -44,7 +55,7 @@ public class OAuth1Helper
         var signatureBaseString = $"{httpMethod.ToUpper()}&{PercentEncode(url)}&{PercentEncode(parameterString)}";
 
         // Create signing key
-        var signingKey = $"{PercentEncode(_consumerSecret)}&{PercentEncode(_accessTokenSecret)}";
+        var signingKey = $"{PercentEncode(_consumerSecret!)}&{PercentEncode(_accessTokenSecret!)}";
 
         // Generate signature
         var signature = GenerateSignature(signatureBaseString, signingKey);

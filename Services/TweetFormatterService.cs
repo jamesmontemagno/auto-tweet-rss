@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Web;
 using Microsoft.Extensions.Logging;
@@ -254,6 +255,51 @@ public partial class TweetFormatterService
         return tweet;
     }
 
+    public string FormatVSCodeChangelogTweet(string summary, DateTime startDate, DateTime endDate, string url)
+    {
+        var startLabel = FormatShortDate(startDate);
+        var endLabel = FormatShortDate(endDate);
+        var dateLabel = startDate.Date == endDate.Date ? startLabel : $"{startLabel}-{endLabel}";
+        var header = $"🆕 VS Code Updates ({dateLabel})";
+
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            summary = "Highlights in recent updates.";
+        }
+
+        var newlines = 4; // 2 between header/summary and 2 between summary/url
+        var buffer = 4; // Small buffer to avoid edge cases
+        var availableForSummary = MaxTweetLength - header.Length - UrlLength - newlines - buffer;
+        if (availableForSummary < 0)
+        {
+            availableForSummary = 0;
+        }
+
+        if (summary.Length > availableForSummary)
+        {
+            if (availableForSummary > MinTruncatedLineLength)
+            {
+                var overflow = summary.Length - availableForSummary;
+                summary = TruncatePreservingMoreIndicator(summary, overflow);
+            }
+            else
+            {
+                summary = "See latest updates.";
+            }
+        }
+
+        var tweet = $"{header}\n\n{summary}\n\n{url}";
+
+        if (tweet.Length > MaxTweetLength)
+        {
+            var overflow = tweet.Length - MaxTweetLength;
+            summary = TruncatePreservingMoreIndicator(summary, overflow);
+            tweet = $"{header}\n\n{summary}\n\n{url}";
+        }
+
+        return tweet;
+    }
+
     /// <summary>
     /// Truncates the summary while trying to preserve the "...and X more" indicator
     /// </summary>
@@ -419,6 +465,11 @@ public partial class TweetFormatterService
         var startText = start.ToString("MMM d");
         var endText = end.ToString("MMM d");
         return $"{startText}-{endText}";
+    }
+
+    private static string FormatShortDate(DateTime date)
+    {
+        return date.ToString("MMM d", CultureInfo.InvariantCulture);
     }
 
     private static string RemoveStaffFlagItems(string htmlContent)

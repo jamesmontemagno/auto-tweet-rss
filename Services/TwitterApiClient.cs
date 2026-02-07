@@ -9,9 +9,14 @@ public class TwitterApiClient
 {
     private const string TwitterApiUrl = "https://api.x.com/2/tweets";
     
-    private readonly ILogger<TwitterApiClient> _logger;
+    private readonly ILogger _logger;
     private readonly HttpClient _httpClient;
     private readonly OAuth1Helper _oauth1Helper;
+
+    /// <summary>
+    /// Whether the Twitter credentials are configured.
+    /// </summary>
+    public bool IsConfigured => _oauth1Helper.IsConfigured;
 
     public TwitterApiClient(
         ILogger<TwitterApiClient> logger, 
@@ -23,8 +28,27 @@ public class TwitterApiClient
         _oauth1Helper = oauth1Helper;
     }
 
+    /// <summary>
+    /// Protected constructor for subclasses with different logger types.
+    /// </summary>
+    protected TwitterApiClient(
+        ILogger logger,
+        IHttpClientFactory httpClientFactory,
+        OAuth1Helper oauth1Helper)
+    {
+        _logger = logger;
+        _httpClient = httpClientFactory.CreateClient();
+        _oauth1Helper = oauth1Helper;
+    }
+
     public async Task<bool> PostTweetAsync(string text)
     {
+        if (!IsConfigured)
+        {
+            _logger.LogWarning("Twitter credentials not configured. Skipping tweet.");
+            return false;
+        }
+
         try
         {
             _logger.LogInformation("Posting tweet: {TweetPreview}...", 
