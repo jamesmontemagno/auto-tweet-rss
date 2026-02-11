@@ -137,9 +137,8 @@ public class TestSummaryFunction
             format: "test-daily",
             forceRefresh: true);
 
-        var url = "https://aka.ms/vscode/updates/insiders";
         var today = DateTime.UtcNow.Date;
-        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, url);
+        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, notes.WebsiteUrl);
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");

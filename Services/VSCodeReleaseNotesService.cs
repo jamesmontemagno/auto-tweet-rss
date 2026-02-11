@@ -667,9 +667,26 @@ public partial class VSCodeReleaseNotesService
 /// </summary>
 public class VSCodeReleaseNotes
 {
+    private const string WebsiteBaseUrl = "https://code.visualstudio.com/updates/";
+
     public DateTime Date { get; set; }
     public required List<VSCodeFeature> Features { get; set; }
     public required string VersionUrl { get; set; }
+
+    /// <summary>
+    /// The human-readable website URL (e.g. https://code.visualstudio.com/updates/v1_110),
+    /// derived from the raw GitHub VersionUrl.
+    /// </summary>
+    public string WebsiteUrl
+    {
+        get
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(VersionUrl, @"(v1_\d+)");
+            return match.Success
+                ? $"{WebsiteBaseUrl}{match.Groups[1].Value}"
+                : VersionUrl;
+        }
+    }
 }
 
 /// <summary>

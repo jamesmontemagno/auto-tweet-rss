@@ -191,8 +191,7 @@ public class TestWeeklyRecapFunction
             forceRefresh: true,
             isThisWeek: true);
 
-        var url = "https://aka.ms/vscode/updates/insiders";
-        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, weekStartDate, weekEndDate, url);
+        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");

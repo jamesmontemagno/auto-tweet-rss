@@ -84,8 +84,7 @@ public class VSCodeWeeklyRecapFunction
                 aiOnly: false,
                 isThisWeek: true);
 
-            var url = "https://aka.ms/vscode/updates/insiders";
-            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, weekStartDate, weekEndDate, url);
+            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
 
             _logger.LogInformation("Formatted VS Code weekly recap tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
 

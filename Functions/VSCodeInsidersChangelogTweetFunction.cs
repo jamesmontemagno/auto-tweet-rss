@@ -80,8 +80,7 @@ public class VSCodeInsidersChangelogTweetFunction
                 aiOnly: false,
                 isThisWeek: false);
 
-            var url = "https://aka.ms/vscode/updates/insiders";
-            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, url);
+            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, notes.WebsiteUrl);
 
             _logger.LogInformation("Formatted VS Code changelog tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
 
