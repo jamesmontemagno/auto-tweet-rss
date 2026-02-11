@@ -37,6 +37,8 @@ var host = new HostBuilder()
             var oauth = new OAuth1Helper("TWITTER_VSCODE_");
             return new VSCodeTwitterApiClient(logger, httpFactory, oauth);
         });
+        services.AddSingleton<BlueskyApiClient>();
+        services.AddSingleton<VSCodeSocialMediaPublisher>();
         services.AddSingleton<TweetFormatterService>();
         services.AddSingleton<StateTrackingService>();
         services.AddSingleton<VSCodeSummaryCacheService>();

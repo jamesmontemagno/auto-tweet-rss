@@ -10,7 +10,7 @@ public class VSCodeWeeklyRecapFunction
     private readonly ILogger<VSCodeWeeklyRecapFunction> _logger;
     private readonly VSCodeReleaseNotesService _releaseNotesService;
     private readonly TweetFormatterService _tweetFormatterService;
-    private readonly VSCodeTwitterApiClient _twitterApiClient;
+    private readonly VSCodeSocialMediaPublisher _publisher;
     private readonly StateTrackingService _stateTrackingService;
 
     private const string StateFileName = "vscode-weekly-recap-last-date.txt";
@@ -19,13 +19,13 @@ public class VSCodeWeeklyRecapFunction
         ILogger<VSCodeWeeklyRecapFunction> logger,
         VSCodeReleaseNotesService releaseNotesService,
         TweetFormatterService tweetFormatterService,
-        VSCodeTwitterApiClient twitterApiClient,
+        VSCodeSocialMediaPublisher publisher,
         StateTrackingService stateTrackingService)
     {
         _logger = logger;
         _releaseNotesService = releaseNotesService;
         _tweetFormatterService = tweetFormatterService;
-        _twitterApiClient = twitterApiClient;
+        _publisher = publisher;
         _stateTrackingService = stateTrackingService;
     }
 
@@ -34,9 +34,9 @@ public class VSCodeWeeklyRecapFunction
     {
         _logger.LogInformation("VSCodeWeeklyRecap function started at: {Time}", DateTime.UtcNow);
 
-        if (!_twitterApiClient.IsConfigured)
+        if (!_publisher.IsConfigured)
         {
-            _logger.LogWarning("VS Code Twitter credentials not configured. Skipping.");
+            _logger.LogWarning("No social media platforms configured for VS Code. Skipping.");
             return;
         }
 
@@ -88,15 +88,15 @@ public class VSCodeWeeklyRecapFunction
 
             _logger.LogInformation("Formatted VS Code weekly recap tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
 
-            var success = await _twitterApiClient.PostTweetAsync(tweet);
+            var success = await _publisher.PostToAllAsync(tweet);
             if (success)
             {
                 await _stateTrackingService.SetLastProcessedIdAsync(todayKey, StateFileName);
-                _logger.LogInformation("Successfully tweeted VS Code weekly recap for {Date}", todayKey);
+                _logger.LogInformation("Successfully posted VS Code weekly recap for {Date}", todayKey);
             }
             else
             {
-                _logger.LogWarning("Failed to tweet VS Code weekly recap for {Date}", todayKey);
+                _logger.LogWarning("Failed to post VS Code weekly recap for {Date}", todayKey);
             }
         }
         catch (Exception ex)

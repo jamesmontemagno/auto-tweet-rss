@@ -23,6 +23,7 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 - **AI-powered summaries**: Uses Microsoft.Extensions.AI with Azure OpenAI to generate concise, emoji-enhanced summaries of release notes
 - Formats tweets with emoji-enhanced bullet points for features
 - Posts to Twitter/X using OAuth 1.0a authentication
+- Cross-posts VS Code automation to Bluesky (optional; uses App Password auth)
 - Tracks state in Azure Blob Storage to prevent duplicate tweets (separate state for CLI and SDK)
 - Respects Twitter's 280 character limit with smart truncation
 
@@ -62,6 +63,7 @@ https://github.com/github/copilot-sdk/releases/tag/v0.1.16
 - [Azure Functions Core Tools v4](https://docs.microsoft.com/azure/azure-functions/functions-run-local)
 - [Azurite](https://docs.microsoft.com/azure/storage/common/storage-use-azurite) (for local development) or an Azure Storage account
 - Twitter Developer Account with OAuth 1.0a credentials
+- Bluesky account + App Password (only required if you want VS Code cross-posting)
 
 ## Configuration
 
@@ -80,10 +82,14 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     "TWITTER_API_SECRET": "<your-consumer-secret>",
     "TWITTER_ACCESS_TOKEN": "<your-access-token>",
     "TWITTER_ACCESS_TOKEN_SECRET": "<your-access-token-secret>",
+
    "TWITTER_VSCODE_API_KEY": "<your-vscode-consumer-key>",
    "TWITTER_VSCODE_API_SECRET": "<your-vscode-consumer-secret>",
    "TWITTER_VSCODE_ACCESS_TOKEN": "<your-vscode-access-token>",
    "TWITTER_VSCODE_ACCESS_TOKEN_SECRET": "<your-vscode-access-token-secret>",
+
+   "BLUESKY_HANDLE": "<your-handle.bsky.social>",
+   "BLUESKY_APP_PASSWORD": "<your-app-password>",
     
     "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
     "STATE_CONTAINER_NAME": "release-state",
@@ -112,6 +118,8 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `TWITTER_VSCODE_API_SECRET` | Twitter OAuth 1.0a Consumer Secret for VS Code updates | Yes (for VS Code tweets) |
 | `TWITTER_VSCODE_ACCESS_TOKEN` | Twitter OAuth 1.0a Access Token for VS Code updates | Yes (for VS Code tweets) |
 | `TWITTER_VSCODE_ACCESS_TOKEN_SECRET` | Twitter OAuth 1.0a Access Token Secret for VS Code updates | Yes (for VS Code tweets) |
+| `BLUESKY_HANDLE` | Bluesky handle (e.g., `yourhandle.bsky.social`) | No (only required for VS Code cross-posting) |
+| `BLUESKY_APP_PASSWORD` | Bluesky App Password (Settings → App passwords) | No (only required for VS Code cross-posting) |
 | `AZURE_STORAGE_CONNECTION_STRING` | Connection string for state tracking blob storage | Yes |
 | `STATE_CONTAINER_NAME` | Blob container name for state file | No (default: `release-state`) |
 | `RSS_FEED_URL` | Atom feed URL to monitor | No (default: Copilot CLI releases) |
@@ -119,6 +127,17 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
 | `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-5-nano`) |
 | `ENABLE_AI_SUMMARIES` | Enable AI-powered summaries for timer functions | No (default: `false`) |
+
+### Bluesky App Password
+
+To enable VS Code cross-posting to Bluesky:
+
+1. Sign in to Bluesky
+2. Go to **Settings → App passwords**
+3. Create a new app password (store it somewhere safe)
+4. Set:
+   - `BLUESKY_HANDLE` (your handle)
+   - `BLUESKY_APP_PASSWORD` (the generated app password)
 
 ### Getting Twitter OAuth 1.0a Credentials
 
@@ -282,11 +301,13 @@ curl -X POST "http://localhost:7071/api/github-changelog/copilot" \
 
 - Schedule: `0 */30 * * * *` (every 30 minutes, polls for today's release notes)
 - Source: Raw markdown from `https://raw.githubusercontent.com/microsoft/vscode-docs/.../release-notes/v1_*.md`
+- Posts: Twitter/X (VS Code account) and Bluesky (if configured)
 
 **VSCodeWeeklyRecap**
 
 - Schedule: `0 0 18,19 * * 6` (Saturday; posts at 10 AM PT)
 - Source: Raw markdown from `https://raw.githubusercontent.com/microsoft/vscode-docs/.../release-notes/v1_*.md`
+- Posts: Twitter/X (VS Code account) and Bluesky (if configured)
 
 ## Project Structure
 
@@ -299,12 +320,17 @@ auto-tweet-rss/
 ├── Functions/
 │   ├── ReleaseNotifierFunction.cs # Timer trigger for Copilot CLI (every 15 min)
 │   ├── SdkReleaseNotifierFunction.cs # Timer trigger for Copilot SDK (every 15 min)
+│   ├── VSCodeInsidersChangelogTweetFunction.cs # Timer trigger for VS Code insiders changelog
 │   ├── VSCodeWeeklyRecapFunction.cs # Timer trigger for VS Code weekly recap (Saturday)
 │   └── TestSummaryFunction.cs     # HTTP endpoint for testing AI summaries
 └── Services/
     ├── RssFeedService.cs          # Fetches and filters RSS feeds
     ├── OAuth1Helper.cs            # HMAC-SHA1 signature for Twitter
     ├── TwitterApiClient.cs        # Direct HTTP calls to Twitter API v2
+   ├── VSCodeTwitterApiClient.cs  # Twitter client for VS Code updates account
+   ├── BlueskyApiClient.cs        # Bluesky (AT Protocol) client
+   ├── VSCodeSocialMediaPublisher.cs # Publishes VS Code posts to all configured platforms
+   ├── ISocialMediaClient.cs      # Abstraction for social media clients
     ├── TweetFormatterService.cs   # Formats tweets for both CLI and SDK
     ├── ReleaseSummarizerService.cs # AI-powered release note summarization
     └── StateTrackingService.cs    # Blob storage for last processed IDs

@@ -6,8 +6,10 @@ namespace AutoTweetRss.Services;
 /// Twitter API client for the VS Code updates account.
 /// Uses TWITTER_VSCODE_* credentials via a separate OAuth1Helper instance.
 /// </summary>
-public class VSCodeTwitterApiClient : TwitterApiClient
+public class VSCodeTwitterApiClient : TwitterApiClient, ISocialMediaClient
 {
+    public string PlatformName => "Twitter";
+
     public VSCodeTwitterApiClient(
         ILogger<VSCodeTwitterApiClient> logger,
         IHttpClientFactory httpClientFactory,
@@ -15,5 +17,7 @@ public class VSCodeTwitterApiClient : TwitterApiClient
         : base((ILogger)logger, httpClientFactory, oauth1Helper)
     {
     }
+
+    public Task<bool> PostAsync(string text) => PostTweetAsync(text);
 }
 

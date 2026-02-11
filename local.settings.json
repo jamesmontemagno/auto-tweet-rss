@@ -12,6 +12,9 @@
     "TWITTER_VSCODE_API_SECRET": "",
     "TWITTER_VSCODE_ACCESS_TOKEN": "",
     "TWITTER_VSCODE_ACCESS_TOKEN_SECRET": "",
+
+    "BLUESKY_HANDLE": "",
+    "BLUESKY_APP_PASSWORD": "",
     
     "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
     "STATE_CONTAINER_NAME": "release-state",
