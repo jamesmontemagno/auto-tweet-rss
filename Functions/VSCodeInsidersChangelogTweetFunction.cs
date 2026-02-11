@@ -29,8 +29,12 @@ public class VSCodeInsidersChangelogTweetFunction
         _stateTrackingService = stateTrackingService;
     }
 
+    /// <summary>
+    /// Polls every 30 minutes to check if today's VS Code Insiders release notes have been published.
+    /// When new notes for today are found and haven't been tweeted yet, posts a summary tweet.
+    /// </summary>
     [Function("VSCodeInsidersChangelogTweet")]
-    public async Task Run([TimerTrigger("0 0 22,23 * * *")] TimerInfo timerInfo)
+    public async Task Run([TimerTrigger("0 */30 * * * *")] TimerInfo timerInfo)
     {
         _logger.LogInformation("VSCodeInsidersChangelogTweet function started at: {Time}", DateTime.UtcNow);
 
@@ -42,53 +46,32 @@ public class VSCodeInsidersChangelogTweetFunction
 
         try
         {
+            // Use Pacific Time to determine "today" since VS Code dates align with PT
             var pacificTimeZone = GetPacificTimeZone();
-            var nowUtc = DateTimeOffset.UtcNow;
-            var nowPacific = TimeZoneInfo.ConvertTime(nowUtc, pacificTimeZone);
-
-            if (nowPacific.Hour != 15)
-            {
-                _logger.LogInformation("Skipping run outside 3pm Pacific window. Local time: {LocalTime}", nowPacific);
-                return;
-            }
-
+            var nowPacific = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, pacificTimeZone);
             var today = nowPacific.Date;
+            var todayString = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+            // Check if we already tweeted today's notes
             var lastState = await _stateTrackingService.GetLastProcessedIdAsync(StateFileName);
-            DateTime startDate;
-
-            if (string.IsNullOrWhiteSpace(lastState))
+            if (string.Equals(lastState, todayString, StringComparison.Ordinal))
             {
-                _logger.LogWarning("No VS Code changelog state found. Using today only: {Date}", today);
-                startDate = today;
-            }
-            else if (!DateTime.TryParseExact(lastState, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var lastDate))
-            {
-                _logger.LogWarning("Invalid VS Code changelog state '{State}'. Using today only: {Date}", lastState, today);
-                startDate = today;
-            }
-            else
-            {
-                startDate = lastDate.AddDays(1);
-            }
-
-            if (startDate > today)
-            {
-                _logger.LogInformation("No new days to process. Last state: {LastState}", lastState ?? "<none>");
+                _logger.LogInformation("Already tweeted VS Code changelog for today ({Date}). Skipping.", todayString);
                 return;
             }
 
-            _logger.LogInformation("Fetching VS Code updates for {StartDate} to {EndDate}",
-                startDate.ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd"));
-
-            var notes = await _releaseNotesService.GetReleaseNotesForDateRangeAsync(startDate, today);
+            // Check if today's release notes exist in the markdown
+            var notes = await _releaseNotesService.GetReleaseNotesForDateAsync(today);
             if (notes == null || notes.Features.Count == 0)
             {
-                _logger.LogInformation("No VS Code updates found for {StartDate} to {EndDate}",
-                    startDate.ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd"));
+                _logger.LogInformation("No VS Code Insiders release notes found for today ({Date}).", todayString);
                 return;
             }
 
-            var cacheFormat = $"daily-tweet-{startDate:yyyyMMdd}-{today:yyyyMMdd}";
+            _logger.LogInformation("Found {Count} features for today ({Date}). Preparing tweet.",
+                notes.Features.Count, todayString);
+
+            var cacheFormat = $"daily-tweet-{today:yyyyMMdd}";
             var summary = await _releaseNotesService.GenerateSummaryAsync(
                 notes,
                 maxLength: 220,
@@ -97,20 +80,20 @@ public class VSCodeInsidersChangelogTweetFunction
                 aiOnly: false,
                 isThisWeek: false);
 
-            var url = notes.VersionUrl ?? "https://code.visualstudio.com/updates";
-            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, startDate, today, url);
+            var url = "https://aka.ms/vscode/updates/insiders";
+            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, url);
 
             _logger.LogInformation("Formatted VS Code changelog tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
 
             var success = await _twitterApiClient.PostTweetAsync(tweet);
             if (success)
             {
-                await _stateTrackingService.SetLastProcessedIdAsync(today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), StateFileName);
-                _logger.LogInformation("Successfully tweeted VS Code changelog for {Date}", today.ToString("yyyy-MM-dd"));
+                await _stateTrackingService.SetLastProcessedIdAsync(todayString, StateFileName);
+                _logger.LogInformation("Successfully tweeted VS Code changelog for {Date}", todayString);
             }
             else
             {
-                _logger.LogWarning("Failed to tweet VS Code changelog for {Date}", today.ToString("yyyy-MM-dd"));
+                _logger.LogWarning("Failed to tweet VS Code changelog for {Date}", todayString);
             }
         }
         catch (Exception ex)

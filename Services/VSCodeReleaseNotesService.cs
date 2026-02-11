@@ -1,11 +1,10 @@
-using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
 namespace AutoTweetRss.Services;
 
 /// <summary>
-/// Service for fetching and parsing VS Code Insiders release notes
+/// Service for fetching and parsing VS Code Insiders release notes from raw markdown on GitHub
 /// </summary>
 public partial class VSCodeReleaseNotesService
 {
@@ -14,19 +13,43 @@ public partial class VSCodeReleaseNotesService
     private readonly ReleaseSummarizerService? _releaseSummarizer;
     private readonly VSCodeSummaryCacheService? _cacheService;
     
-    // Base URL for VS Code updates - version changes monthly
-    private const string BaseUpdateUrl = "https://code.visualstudio.com/updates/";
+    // Raw GitHub URL pattern for release notes markdown
+    private const string RawGitHubBaseUrl = "https://raw.githubusercontent.com/microsoft/vscode-docs/refs/heads/main/release-notes/";
+    
+    // aka.ms redirect that always resolves to the current insiders release notes markdown
+    private const string InsidersRedirectUrl = "https://aka.ms/vscode/updates/insiders";
+    
+    // Required front-matter value to validate this is an Insiders release
+    private const string RequiredProductEdition = "Insiders";
+    
+    // Cached resolved version number from the aka.ms redirect (avoids repeated HTTP calls)
+    private int? _resolvedVersionNumber;
     
     // Constants for text length thresholds
-    private const int MinListItemLength = 5;
-    private const int MinFeatureTextLength = 20;
+    private const int MinBulletLength = 5;
     private const int MaxTitleLength = 80;
     private const int MaxSentenceEndIndex = 100;
     private const int TruncatedTitleLength = 77;
     
-    // Compiled regex for extracting date from headings like "January 26, 2026" or "January 26"
+    // Compiled regex for matching markdown date headings like "## February 11, 2026"
+    [GeneratedRegex(@"^##\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:,\s*(\d{4}))?", RegexOptions.IgnoreCase)]
+    private static partial Regex MarkdownDateHeadingPattern();
+
+    // Regex for extracting date from any text (used for category extraction)
     [GeneratedRegex(@"(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:,\s*(\d{4}))?", RegexOptions.IgnoreCase)]
     private static partial Regex DatePattern();
+
+    // Regex for extracting version number from URLs like v1_110.md
+    [GeneratedRegex(@"v1_(\d+)", RegexOptions.IgnoreCase)]
+    private static partial Regex VersionPattern();
+
+    // Regex for extracting markdown links like [#291961](https://github.com/...)
+    [GeneratedRegex(@"\[#?\d+\]\((https?://[^\)]+)\)")]
+    private static partial Regex MarkdownLinkPattern();
+
+    // Regex for stripping all markdown link syntax: [text](url) → text
+    [GeneratedRegex(@"\[([^\]]*)\]\([^\)]*\)")]
+    private static partial Regex MarkdownLinkStripPattern();
 
     public VSCodeReleaseNotesService(
         ILogger<VSCodeReleaseNotesService> logger,
@@ -43,7 +66,6 @@ public partial class VSCodeReleaseNotesService
     /// <summary>
     /// Gets VS Code Insiders release notes for today's date
     /// </summary>
-    /// <returns>Release notes if updates exist for today, null otherwise</returns>
     public async Task<VSCodeReleaseNotes?> GetTodayReleaseNotesAsync()
     {
         var today = DateTime.UtcNow.Date;
@@ -53,48 +75,50 @@ public partial class VSCodeReleaseNotesService
     /// <summary>
     /// Gets the VS Code Insiders release notes for a specific date
     /// </summary>
-    /// <param name="targetDate">The date to fetch release notes for</param>
-    /// <returns>Release notes if updates exist for the date, null otherwise</returns>
     public async Task<VSCodeReleaseNotes?> GetReleaseNotesForDateAsync(DateTime targetDate)
     {
-        foreach (var versionUrl in GetCandidateVersionUrls(targetDate))
+        foreach (var mdUrl in await GetCandidateMarkdownUrlsAsync(targetDate))
         {
             try
             {
                 _logger.LogInformation("Fetching VS Code Insiders release notes from {Url} for date {Date}",
-                    versionUrl, targetDate.ToString("yyyy-MM-dd"));
+                    mdUrl, targetDate.ToString("yyyy-MM-dd"));
 
-                var html = await _httpClient.GetStringAsync(versionUrl);
-                var doc = new HtmlDocument();
-                doc.LoadHtml(html);
+                var markdown = await _httpClient.GetStringAsync(mdUrl);
 
-                // Find all date-based sections in the page
-                var features = ParseFeaturesForDate(doc, targetDate);
+                if (!ValidateFrontMatter(markdown, mdUrl))
+                    continue;
+
+                var sections = ParseMarkdownSections(markdown, targetDate.Year);
+                var features = sections
+                    .Where(s => s.Date.Date == targetDate.Date)
+                    .SelectMany(s => s.Features)
+                    .ToList();
 
                 if (features.Count == 0)
                 {
                     _logger.LogInformation("No release notes found for date {Date} at {Url}",
-                        targetDate.ToString("yyyy-MM-dd"), versionUrl);
+                        targetDate.ToString("yyyy-MM-dd"), mdUrl);
                     continue;
                 }
 
                 _logger.LogInformation("Found {Count} features for date {Date} at {Url}",
-                    features.Count, targetDate.ToString("yyyy-MM-dd"), versionUrl);
+                    features.Count, targetDate.ToString("yyyy-MM-dd"), mdUrl);
 
                 return new VSCodeReleaseNotes
                 {
                     Date = targetDate,
                     Features = features,
-                    VersionUrl = versionUrl
+                    VersionUrl = mdUrl
                 };
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", versionUrl);
+                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", mdUrl);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", versionUrl);
+                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", mdUrl);
             }
         }
 
@@ -104,9 +128,6 @@ public partial class VSCodeReleaseNotesService
     /// <summary>
     /// Gets VS Code Insiders release notes for a date range (inclusive)
     /// </summary>
-    /// <param name="startDate">Start date for the range</param>
-    /// <param name="endDate">End date for the range</param>
-    /// <returns>Release notes if updates exist for the range, null otherwise</returns>
     public async Task<VSCodeReleaseNotes?> GetReleaseNotesForDateRangeAsync(DateTime startDate, DateTime endDate)
     {
         if (startDate > endDate)
@@ -114,8 +135,10 @@ public partial class VSCodeReleaseNotesService
             (startDate, endDate) = (endDate, startDate);
         }
 
-        var candidateUrls = GetCandidateVersionUrls(endDate)
-            .Concat(GetCandidateVersionUrls(startDate))
+        var endUrls = await GetCandidateMarkdownUrlsAsync(endDate);
+        var startUrls = await GetCandidateMarkdownUrlsAsync(startDate);
+        var candidateUrls = endUrls
+            .Concat(startUrls)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -123,36 +146,39 @@ public partial class VSCodeReleaseNotesService
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? versionUrlForResponse = null;
 
-        foreach (var versionUrl in candidateUrls)
+        foreach (var mdUrl in candidateUrls)
         {
             try
             {
                 _logger.LogInformation("Fetching VS Code Insiders release notes from {Url} for range {StartDate} to {EndDate}",
-                    versionUrl, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+                    mdUrl, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 
-                var html = await _httpClient.GetStringAsync(versionUrl);
-                var doc = new HtmlDocument();
-                doc.LoadHtml(html);
+                var markdown = await _httpClient.GetStringAsync(mdUrl);
 
-                var features = ParseFeaturesForDateRange(doc, startDate, endDate);
+                if (!ValidateFrontMatter(markdown, mdUrl))
+                    continue;
+
+                var sections = ParseMarkdownSections(markdown, endDate.Year);
+                var features = sections
+                    .Where(s => s.Date.Date >= startDate.Date && s.Date.Date <= endDate.Date)
+                    .SelectMany(s => s.Features)
+                    .ToList();
+
                 if (features.Count == 0)
                 {
                     _logger.LogInformation("No release notes found for range {StartDate} to {EndDate} at {Url}",
-                        startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), versionUrl);
+                        startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), mdUrl);
                     continue;
                 }
 
                 _logger.LogInformation("Found {Count} features for range {StartDate} to {EndDate} at {Url}",
-                    features.Count, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), versionUrl);
+                    features.Count, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), mdUrl);
 
-                if (versionUrlForResponse == null)
-                {
-                    versionUrlForResponse = versionUrl;
-                }
+                versionUrlForResponse ??= mdUrl;
 
                 foreach (var feature in features)
                 {
-                    var key = $"{feature.Title}|{feature.Description}|{feature.Category}";
+                    var key = $"{feature.Title}|{feature.Description}";
                     if (seen.Add(key))
                     {
                         allFeatures.Add(feature);
@@ -161,11 +187,11 @@ public partial class VSCodeReleaseNotesService
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", versionUrl);
+                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", mdUrl);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", versionUrl);
+                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", mdUrl);
             }
         }
 
@@ -185,47 +211,46 @@ public partial class VSCodeReleaseNotesService
     /// <summary>
     /// Gets the full VS Code Insiders release notes for the current version
     /// </summary>
-    /// <returns>All release notes from the current version page</returns>
     public async Task<VSCodeReleaseNotes?> GetFullReleaseNotesAsync()
     {
         var today = DateTime.UtcNow.Date;
         
-        foreach (var versionUrl in GetCandidateVersionUrls(today))
+        foreach (var mdUrl in await GetCandidateMarkdownUrlsAsync(today))
         {
             try
             {
-                _logger.LogInformation("Fetching full VS Code Insiders release notes from {Url}", versionUrl);
+                _logger.LogInformation("Fetching full VS Code Insiders release notes from {Url}", mdUrl);
 
-                var html = await _httpClient.GetStringAsync(versionUrl);
-                var doc = new HtmlDocument();
-                doc.LoadHtml(html);
+                var markdown = await _httpClient.GetStringAsync(mdUrl);
 
-                // Parse all features without date filtering
-                var features = ParseAllFeatures(doc);
+                if (!ValidateFrontMatter(markdown, mdUrl))
+                    continue;
+
+                var sections = ParseMarkdownSections(markdown, today.Year);
+                var features = sections.SelectMany(s => s.Features).ToList();
 
                 if (features.Count == 0)
                 {
-                    _logger.LogInformation("No release notes found at {Url}", versionUrl);
+                    _logger.LogInformation("No release notes found at {Url}", mdUrl);
                     continue;
                 }
 
-                _logger.LogInformation("Found {Count} total features at {Url}", features.Count, versionUrl);
+                _logger.LogInformation("Found {Count} total features at {Url}", features.Count, mdUrl);
 
-                // Use today's date as the reference date for the full release
                 return new VSCodeReleaseNotes
                 {
                     Date = today,
                     Features = features,
-                    VersionUrl = versionUrl
+                    VersionUrl = mdUrl
                 };
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", versionUrl);
+                _logger.LogWarning(ex, "Failed to fetch VS Code release notes from {Url}", mdUrl);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", versionUrl);
+                _logger.LogError(ex, "Error fetching VS Code Insiders release notes from {Url}", mdUrl);
             }
         }
 
@@ -235,13 +260,6 @@ public partial class VSCodeReleaseNotesService
     /// <summary>
     /// Generates an AI-powered summary of the release notes
     /// </summary>
-    /// <param name="notes">The release notes to summarize</param>
-    /// <param name="maxLength">Maximum summary length in characters</param>
-    /// <param name="format">Format identifier for caching (e.g., "text", "json")</param>
-    /// <param name="forceRefresh">If true, bypasses cache and generates a new summary</param>
-    /// <param name="aiOnly">If true, summarize only AI-related features</param>
-    /// <param name="isThisWeek">If true, use the weekly prompt variant</param>
-    /// <returns>AI-generated summary</returns>
     public async Task<string> GenerateSummaryAsync(
         VSCodeReleaseNotes notes,
         int maxLength = 500,
@@ -317,30 +335,241 @@ public partial class VSCodeReleaseNotesService
         return $"VS Code Insiders received {featureCount} update{(featureCount != 1 ? "s" : "")} on {notes.Date:MMMM d, yyyy}{categoryText}.";
     }
 
+    // ── Front-matter validation ──────────────────────────────────────────────
+
     /// <summary>
-    /// Gets candidate URLs for the release notes based on the target date.
-    /// VS Code releases on the first Thursday of the month, and the version page
-    /// changes then; also try the next version in case notes appear early.
+    /// Validates that the markdown contains front matter with ProductEdition: Insiders.
+    /// Returns false (and logs) if validation fails, so callers skip to the next candidate.
     /// </summary>
-    private static IEnumerable<string> GetCandidateVersionUrls(DateTime targetDate)
+    private bool ValidateFrontMatter(string markdown, string url)
+    {
+        // Front matter is between the first pair of --- delimiters
+        if (!markdown.StartsWith("---"))
+        {
+            _logger.LogWarning("No front matter found in {Url}, skipping", url);
+            return false;
+        }
+
+        var endIndex = markdown.IndexOf("---", 3, StringComparison.Ordinal);
+        if (endIndex < 0)
+        {
+            _logger.LogWarning("Malformed front matter in {Url}, skipping", url);
+            return false;
+        }
+
+        var frontMatter = markdown[3..endIndex];
+
+        // Look for ProductEdition: Insiders (case-insensitive value check)
+        foreach (var line in frontMatter.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("ProductEdition:", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = trimmed["ProductEdition:".Length..].Trim();
+                if (string.Equals(value, RequiredProductEdition, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                _logger.LogWarning("ProductEdition is '{Value}' (expected '{Expected}') in {Url}, skipping",
+                    value, RequiredProductEdition, url);
+                return false;
+            }
+        }
+
+        _logger.LogWarning("ProductEdition not found in front matter of {Url}, skipping", url);
+        return false;
+    }
+
+    // ── Markdown parsing ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses the markdown into date-sections, each containing a list of features
+    /// extracted from bullet points (* ...) under ## Date headings.
+    /// </summary>
+    private List<MarkdownDateSection> ParseMarkdownSections(string markdown, int defaultYear)
+    {
+        var sections = new List<MarkdownDateSection>();
+        var lines = markdown.Split('\n');
+
+        MarkdownDateSection? currentSection = null;
+        var currentBulletLines = new List<string>();
+        string currentCategory = "General";
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var trimmed = line.TrimEnd('\r');
+
+            // Check for ## date heading
+            var dateMatch = MarkdownDateHeadingPattern().Match(trimmed);
+            if (dateMatch.Success)
+            {
+                // Flush current bullet if any
+                FlushBullet(currentBulletLines, currentSection, currentCategory);
+
+                var parsedDate = ParseDateFromMatch(dateMatch, defaultYear);
+                if (parsedDate != null)
+                {
+                    currentSection = new MarkdownDateSection { Date = parsedDate.Value };
+                    sections.Add(currentSection);
+                    currentCategory = ExtractCategory(trimmed);
+                }
+                continue;
+            }
+
+            // If no current section yet, skip (preamble / front matter)
+            if (currentSection == null) continue;
+
+            // Check for a new bullet point (* ...)
+            if (trimmed.StartsWith("* "))
+            {
+                // Flush previous bullet
+                FlushBullet(currentBulletLines, currentSection, currentCategory);
+                currentBulletLines.Add(trimmed[2..].TrimEnd());
+                continue;
+            }
+
+            // Continuation line of a multi-line bullet (indented or non-empty, non-heading)
+            if (currentBulletLines.Count > 0 && !string.IsNullOrWhiteSpace(trimmed)
+                && !trimmed.StartsWith('#'))
+            {
+                currentBulletLines.Add(trimmed.TrimEnd());
+                continue;
+            }
+
+            // Blank line or heading — flush bullet
+            if (currentBulletLines.Count > 0)
+            {
+                FlushBullet(currentBulletLines, currentSection, currentCategory);
+            }
+        }
+
+        // Flush any trailing bullet
+        FlushBullet(currentBulletLines, currentSection, currentCategory);
+
+        return sections;
+    }
+
+    /// <summary>
+    /// Joins accumulated bullet continuation lines into a single feature and adds it to the section.
+    /// </summary>
+    private void FlushBullet(List<string> bulletLines, MarkdownDateSection? section, string category)
+    {
+        if (bulletLines.Count == 0 || section == null) return;
+
+        var rawText = string.Join(" ", bulletLines).Trim();
+        bulletLines.Clear();
+
+        if (rawText.Length < MinBulletLength) return;
+
+        // Extract the first issue/PR link if present
+        var linkMatch = MarkdownLinkPattern().Match(rawText);
+        var link = linkMatch.Success ? linkMatch.Groups[1].Value : null;
+
+        // Strip markdown link syntax for clean text
+        var cleanText = MarkdownLinkStripPattern().Replace(rawText, "$1").Trim();
+        // Remove trailing issue numbers like #291961
+        cleanText = Regex.Replace(cleanText, @"\s*#\d+\s*$", "").Trim();
+
+        if (string.IsNullOrWhiteSpace(cleanText) || cleanText.Length < MinBulletLength) return;
+
+        var title = TruncateTitle(cleanText);
+
+        section.Features.Add(new VSCodeFeature
+        {
+            Title = title,
+            Description = cleanText,
+            Category = category,
+            Link = link
+        });
+    }
+
+    // ── URL resolution ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets candidate raw-GitHub markdown URLs by resolving the aka.ms redirect
+    /// to discover the current version, then trying that version and the previous one.
+    /// Falls back to date-based calculation if the redirect fails.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> GetCandidateMarkdownUrlsAsync(DateTime targetDate)
+    {
+        var currentVersion = await ResolveCurrentVersionAsync();
+
+        if (currentVersion.HasValue)
+        {
+            var urls = new List<string>
+            {
+                $"{RawGitHubBaseUrl}v1_{currentVersion.Value}.md",
+                $"{RawGitHubBaseUrl}v1_{currentVersion.Value - 1}.md"
+            };
+            return urls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        _logger.LogWarning("Could not resolve version from redirect, falling back to date-based URL calculation");
+        return GetCandidateMarkdownUrlsByDate(targetDate);
+    }
+
+    /// <summary>
+    /// Resolves the aka.ms redirect to extract the current version number.
+    /// Caches the result for the lifetime of the service instance.
+    /// </summary>
+    private async Task<int?> ResolveCurrentVersionAsync()
+    {
+        if (_resolvedVersionNumber.HasValue)
+        {
+            return _resolvedVersionNumber;
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, InsidersRedirectUrl);
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+
+            var finalUrl = response.RequestMessage?.RequestUri?.ToString();
+            if (string.IsNullOrEmpty(finalUrl))
+            {
+                _logger.LogWarning("aka.ms redirect did not produce a final URL");
+                return null;
+            }
+
+            var match = VersionPattern().Match(finalUrl);
+            if (!match.Success)
+            {
+                _logger.LogWarning("Could not extract version number from resolved URL: {Url}", finalUrl);
+                return null;
+            }
+
+            _resolvedVersionNumber = int.Parse(match.Groups[1].Value);
+            _logger.LogInformation("Resolved VS Code Insiders version from redirect: v1_{Version} ({Url})",
+                _resolvedVersionNumber, finalUrl);
+            return _resolvedVersionNumber;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve aka.ms redirect for VS Code version");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Fallback: calculates candidate markdown URLs from a hardcoded reference point.
+    /// </summary>
+    private static IReadOnlyList<string> GetCandidateMarkdownUrlsByDate(DateTime targetDate)
     {
         var releaseMonth = GetReleaseMonth(targetDate);
         var nextMonth = releaseMonth.AddMonths(1);
 
         var urls = new List<string>
         {
-            GetVersionUrlForMonth(releaseMonth),
-            GetVersionUrlForMonth(nextMonth)
+            GetMarkdownUrlForMonth(releaseMonth),
+            GetMarkdownUrlForMonth(nextMonth)
         };
 
-        return urls.Distinct(StringComparer.OrdinalIgnoreCase);
+        return urls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>
-    /// Gets the URL for the version page based on a release month.
-    /// VS Code uses version numbers like v1_109 for January 2026.
-    /// </summary>
-    private static string GetVersionUrlForMonth(DateTime releaseMonth)
+    private static string GetMarkdownUrlForMonth(DateTime releaseMonth)
     {
         // Reference point: v1.109 = January 2026
         var referenceDate = new DateTime(2026, 1, 1);
@@ -349,7 +578,7 @@ public partial class VSCodeReleaseNotesService
         var monthsDiff = ((releaseMonth.Year - referenceDate.Year) * 12) + releaseMonth.Month - referenceDate.Month;
         var version = referenceVersion + monthsDiff;
 
-        return $"{BaseUpdateUrl}v1_{version}";
+        return $"{RawGitHubBaseUrl}v1_{version}.md";
     }
 
     private static DateTime GetReleaseMonth(DateTime targetDate)
@@ -371,95 +600,7 @@ public partial class VSCodeReleaseNotesService
         return firstDay.AddDays(offset);
     }
 
-    /// <summary>
-    /// Parses all features from the HTML document without date filtering
-    /// </summary>
-    private List<VSCodeFeature> ParseAllFeatures(HtmlDocument doc)
-    {
-        var features = new List<VSCodeFeature>();
-        
-        // Look for all headings that might contain features
-        var headings = doc.DocumentNode.SelectNodes("//h2 | //h3 | //h4");
-        if (headings == null) return features;
-
-        foreach (var heading in headings)
-        {
-            var headingText = heading.InnerText.Trim();
-            var category = headingText;
-            
-            // Extract features from this section
-            var sectionFeatures = ExtractFeaturesFromSection(heading);
-            features.AddRange(sectionFeatures);
-        }
-
-        return features;
-    }
-
-    /// <summary>
-    /// Parses features from the HTML document for a specific date
-    /// </summary>
-    private List<VSCodeFeature> ParseFeaturesForDate(HtmlDocument doc, DateTime targetDate)
-    {
-        var features = new List<VSCodeFeature>();
-        
-        // VS Code Insiders release notes use h2/h3 headings with dates and list items for features
-        // We need to find sections that match the target date
-        
-        // Look for date headings in the document
-        var headings = doc.DocumentNode.SelectNodes("//h2 | //h3 | //h4");
-        if (headings == null) return features;
-
-        foreach (var heading in headings)
-        {
-            var headingText = heading.InnerText.Trim();
-            var dateMatch = DatePattern().Match(headingText);
-            
-            if (!dateMatch.Success) continue;
-            
-            var parsedDate = ParseDateFromMatch(dateMatch, targetDate.Year);
-            
-            // Check if this section matches our target date
-            if (parsedDate?.Date != targetDate.Date) continue;
-            
-            // Found a matching date section - extract features from the following content
-            var sectionFeatures = ExtractFeaturesFromSection(heading);
-            features.AddRange(sectionFeatures);
-        }
-
-        return features;
-    }
-
-    /// <summary>
-    /// Parses features from the HTML document for a date range (inclusive)
-    /// </summary>
-    private List<VSCodeFeature> ParseFeaturesForDateRange(HtmlDocument doc, DateTime startDate, DateTime endDate)
-    {
-        var features = new List<VSCodeFeature>();
-
-        var headings = doc.DocumentNode.SelectNodes("//h2 | //h3 | //h4");
-        if (headings == null) return features;
-
-        foreach (var heading in headings)
-        {
-            var headingText = heading.InnerText.Trim();
-            var dateMatch = DatePattern().Match(headingText);
-
-            if (!dateMatch.Success) continue;
-
-            var parsedDate = ParseDateFromMatch(dateMatch, endDate.Year);
-            if (parsedDate == null) continue;
-
-            if (parsedDate.Value.Date < startDate.Date || parsedDate.Value.Date > endDate.Date)
-            {
-                continue;
-            }
-
-            var sectionFeatures = ExtractFeaturesFromSection(heading);
-            features.AddRange(sectionFeatures);
-        }
-
-        return features;
-    }
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static DateTime? ParseDateFromMatch(Match match, int defaultYear)
     {
@@ -468,9 +609,7 @@ public partial class VSCodeReleaseNotesService
             var month = match.Groups[1].Value;
             var day = int.Parse(match.Groups[2].Value);
             var year = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : defaultYear;
-            
             var monthNumber = DateTime.ParseExact(month, "MMMM", System.Globalization.CultureInfo.InvariantCulture).Month;
-            
             return new DateTime(year, monthNumber, day);
         }
         catch
@@ -479,107 +618,8 @@ public partial class VSCodeReleaseNotesService
         }
     }
 
-    private List<VSCodeFeature> ExtractFeaturesFromSection(HtmlNode headingNode)
-    {
-        var features = new List<VSCodeFeature>();
-        
-        // Get the current category from the heading text (might be like "January 26, 2026 - Chat improvements")
-        var headingText = headingNode.InnerText.Trim();
-        var category = ExtractCategory(headingText);
-        
-        // Traverse siblings until we hit the next heading
-        var sibling = headingNode.NextSibling;
-        
-        while (sibling != null)
-        {
-            // Stop if we hit another date heading
-            if (sibling.Name.Equals("h2", StringComparison.OrdinalIgnoreCase) ||
-                sibling.Name.Equals("h3", StringComparison.OrdinalIgnoreCase) ||
-                sibling.Name.Equals("h4", StringComparison.OrdinalIgnoreCase))
-            {
-                // Check if this is a new date section
-                if (DatePattern().IsMatch(sibling.InnerText))
-                {
-                    break;
-                }
-                // Update category for sub-sections
-                category = sibling.InnerText.Trim();
-            }
-            
-            // Extract list items as features
-            if (sibling.Name.Equals("ul", StringComparison.OrdinalIgnoreCase) ||
-                sibling.Name.Equals("ol", StringComparison.OrdinalIgnoreCase))
-            {
-                var listItems = sibling.SelectNodes(".//li");
-                if (listItems != null)
-                {
-                    foreach (var li in listItems)
-                    {
-                        var feature = ParseFeatureFromListItem(li, category);
-                        if (feature != null)
-                        {
-                            features.Add(feature);
-                        }
-                    }
-                }
-            }
-            
-            // Also check for paragraphs that might contain feature descriptions
-            if (sibling.Name.Equals("p", StringComparison.OrdinalIgnoreCase))
-            {
-                var text = HtmlEntity.DeEntitize(sibling.InnerText).Trim();
-                if (!string.IsNullOrWhiteSpace(text) && text.Length > MinFeatureTextLength)
-                {
-                    features.Add(new VSCodeFeature
-                    {
-                        Title = TruncateTitle(text),
-                        Description = text,
-                        Category = category
-                    });
-                }
-            }
-            
-            sibling = sibling.NextSibling;
-        }
-        
-        return features;
-    }
-
-    private static VSCodeFeature? ParseFeatureFromListItem(HtmlNode li, string category)
-    {
-        var text = HtmlEntity.DeEntitize(li.InnerText).Trim();
-        
-        if (string.IsNullOrWhiteSpace(text) || text.Length < MinListItemLength)
-        {
-            return null;
-        }
-        
-        // Extract link if present and convert relative URLs to absolute
-        var linkNode = li.SelectSingleNode(".//a");
-        var link = linkNode?.GetAttributeValue("href", null);
-        if (link != null && link.StartsWith('/'))
-        {
-            link = "https://code.visualstudio.com" + link;
-        }
-        
-        // Try to extract title from bold/strong text or use the first part
-        var strongNode = li.SelectSingleNode(".//strong | .//b");
-        var title = strongNode != null 
-            ? HtmlEntity.DeEntitize(strongNode.InnerText).Trim() 
-            : TruncateTitle(text);
-        
-        return new VSCodeFeature
-        {
-            Title = title,
-            Description = text,
-            Category = category,
-            Link = link
-        };
-    }
-
     private static string TruncateTitle(string text)
     {
-        // Get first sentence or first N characters
         var firstPeriod = text.IndexOf('.');
         if (firstPeriod > 0 && firstPeriod < MaxSentenceEndIndex)
         {
@@ -591,14 +631,13 @@ public partial class VSCodeReleaseNotesService
 
     private static string ExtractCategory(string headingText)
     {
-        // Try to extract category after the date, e.g., "January 26 - Chat" -> "Chat"
+        // "## February 11, 2026 - Chat improvements" → "Chat improvements"
         var dashIndex = headingText.IndexOf('-');
         if (dashIndex > 0 && dashIndex < headingText.Length - 2)
         {
             return headingText[(dashIndex + 1)..].Trim();
         }
-        
-        // Remove date portion and return remainder
+
         var dateMatch = DatePattern().Match(headingText);
         if (dateMatch.Success)
         {
@@ -609,8 +648,17 @@ public partial class VSCodeReleaseNotesService
                 return remainder.TrimStart('-', ':', ' ');
             }
         }
-        
+
         return "General";
+    }
+
+    /// <summary>
+    /// Internal representation of a date section while parsing markdown
+    /// </summary>
+    private sealed class MarkdownDateSection
+    {
+        public DateTime Date { get; init; }
+        public List<VSCodeFeature> Features { get; } = [];
     }
 }
 

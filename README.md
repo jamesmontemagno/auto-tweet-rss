@@ -280,13 +280,13 @@ curl -X POST "http://localhost:7071/api/github-changelog/copilot" \
 
 **VSCodeInsidersChangelogTweet**
 
-- Schedule: `0 0 22,23 * * *` (daily; posts at 3 PM PT)
-- Source: VS Code updates at `https://code.visualstudio.com/updates/v1_*`
+- Schedule: `0 */30 * * * *` (every 30 minutes, polls for today's release notes)
+- Source: Raw markdown from `https://raw.githubusercontent.com/microsoft/vscode-docs/.../release-notes/v1_*.md`
 
 **VSCodeWeeklyRecap**
 
-- Schedule: `0 0 17,18 * * 6` (Saturday; posts at 10 AM PT)
-- Source: VS Code updates at `https://code.visualstudio.com/updates/v1_*`
+- Schedule: `0 0 18,19 * * 6` (Saturday; posts at 10 AM PT)
+- Source: Raw markdown from `https://raw.githubusercontent.com/microsoft/vscode-docs/.../release-notes/v1_*.md`
 
 ## Project Structure
 
