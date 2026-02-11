@@ -53,6 +53,9 @@ public class TwitterApiClient
         {
             _logger.LogInformation("Posting tweet: {TweetPreview}...", 
                 text.Length > 50 ? text[..50] : text);
+            _logger.LogInformation("OAuth configured: {IsConfigured}, Consumer key starts with: {KeyPrefix}",
+                _oauth1Helper.IsConfigured,
+                _oauth1Helper.ConsumerKeyPrefix);
 
             var authHeader = _oauth1Helper.GenerateAuthorizationHeader("POST", TwitterApiUrl);
             

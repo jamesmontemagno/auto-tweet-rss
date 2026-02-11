@@ -15,12 +15,20 @@ public class OAuth1Helper
     /// </summary>
     public bool IsConfigured { get; }
 
+    /// <summary>
+    /// First 4 characters of the consumer key for diagnostic logging (safe to log).
+    /// </summary>
+    public string ConsumerKeyPrefix =>
+        !string.IsNullOrEmpty(_consumerKey) && _consumerKey.Length >= 4
+            ? _consumerKey[..4] + "..."
+            : "(empty)";
+
     public OAuth1Helper(string envVarPrefix = "TWITTER_")
     {
-        _consumerKey = Environment.GetEnvironmentVariable($"{envVarPrefix}API_KEY");
-        _consumerSecret = Environment.GetEnvironmentVariable($"{envVarPrefix}API_SECRET");
-        _accessToken = Environment.GetEnvironmentVariable($"{envVarPrefix}ACCESS_TOKEN");
-        _accessTokenSecret = Environment.GetEnvironmentVariable($"{envVarPrefix}ACCESS_TOKEN_SECRET");
+        _consumerKey = Environment.GetEnvironmentVariable($"{envVarPrefix}API_KEY")?.Trim();
+        _consumerSecret = Environment.GetEnvironmentVariable($"{envVarPrefix}API_SECRET")?.Trim();
+        _accessToken = Environment.GetEnvironmentVariable($"{envVarPrefix}ACCESS_TOKEN")?.Trim();
+        _accessTokenSecret = Environment.GetEnvironmentVariable($"{envVarPrefix}ACCESS_TOKEN_SECRET")?.Trim();
 
         IsConfigured = !string.IsNullOrEmpty(_consumerKey)
             && !string.IsNullOrEmpty(_consumerSecret)
