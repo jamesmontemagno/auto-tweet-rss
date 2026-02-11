@@ -402,21 +402,18 @@ Total items in release: {totalItemCount}
 Target items to show: {targetItems}
 
 Requirements:
-- Start with 2-3 sentences providing a high-level summary of the day's updates
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
-- After the summary sentences, include UP TO {targetItems} of the most important/exciting features
-- NEVER include user names, contributor names, or issue/PR numbers in the summary
+- Output ONLY a list of the most important features, one per line, each starting with an emoji
+- Do NOT include any introductory sentences, paragraph summary, or commentary
+- NEVER include user names, contributor names, or issue/PR numbers
 - Focus ONLY on what the feature does, not who contributed it
-- Use emojis to make it visually appealing
-- Each feature should be on its own line
-- Keep descriptions concise (aim for 40-50 characters per line)
+- Use varied emojis to make it visually appealing (✨ ⚡ 🔧 🎨 🐛 🔒 📖 etc.)
+- Keep descriptions concise (aim for 35-50 characters per line)
 - If you show fewer items than the total, add ""...and X more"" as the FINAL line
 - DO NOT include any markdown formatting or headers
-- Output ONLY the summary and formatted feature list, nothing else
+- Output ONLY the formatted feature list, nothing else
 
 Example output format:
-VS Code Insiders brings exciting updates to the chat experience and terminal functionality. Performance improvements and new settings make development smoother.
-
 ✨ Improved inline chat discoverability
 ⚡ Better performance for long sessions
 🔧 New terminal sticky scroll setting

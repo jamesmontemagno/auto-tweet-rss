@@ -15,6 +15,7 @@ public partial class TweetFormatterService
     private const int UrlLength = 23; // t.co shortens all URLs to 23 chars
     private const string Hashtag = "#GitHubCopilotCLI";
     private const string SdkHashtag = "#GitHubCopilotSDK";
+    private const string VSCodeHashtag = "#vscode";
     
     // Truncation constants
     private const int MinTruncatedLineLength = 10; // Minimum meaningful characters to show after truncation
@@ -257,19 +258,19 @@ public partial class TweetFormatterService
 
     public string FormatVSCodeChangelogTweet(string summary, DateTime startDate, DateTime endDate, string url)
     {
-        var startLabel = FormatShortDate(startDate);
-        var endLabel = FormatShortDate(endDate);
-        var dateLabel = startDate.Date == endDate.Date ? startLabel : $"{startLabel}-{endLabel}";
-        var header = $"🆕 VS Code Updates ({dateLabel})";
+        var dateLabel = startDate.Date == endDate.Date
+            ? FormatShortDate(endDate)
+            : $"{FormatShortDate(startDate)}-{FormatShortDate(endDate)}";
+        var header = $"🚀 Insiders Update - {dateLabel}";
 
         if (string.IsNullOrWhiteSpace(summary))
         {
-            summary = "Highlights in recent updates.";
+            summary = "See latest updates.";
         }
 
-        var newlines = 4; // 2 between header/summary and 2 between summary/url
-        var buffer = 4; // Small buffer to avoid edge cases
-        var availableForSummary = MaxTweetLength - header.Length - UrlLength - newlines - buffer;
+        var newlines = 6; // 2 between header/summary, 2 between summary/url, 2 between url/hashtag
+        var buffer = 4;
+        var availableForSummary = MaxTweetLength - header.Length - UrlLength - VSCodeHashtag.Length - newlines - buffer;
         if (availableForSummary < 0)
         {
             availableForSummary = 0;
@@ -288,13 +289,13 @@ public partial class TweetFormatterService
             }
         }
 
-        var tweet = $"{header}\n\n{summary}\n\n{url}";
+        var tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
 
         if (tweet.Length > MaxTweetLength)
         {
             var overflow = tweet.Length - MaxTweetLength;
             summary = TruncatePreservingMoreIndicator(summary, overflow);
-            tweet = $"{header}\n\n{summary}\n\n{url}";
+            tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
         }
 
         return tweet;
