@@ -11,15 +11,18 @@ public class TestSummaryFunction
     private readonly ILogger<TestSummaryFunction> _logger;
     private readonly RssFeedService _rssFeedService;
     private readonly TweetFormatterService _tweetFormatterService;
+    private readonly VSCodeReleaseNotesService _vsCodeReleaseNotesService;
 
     public TestSummaryFunction(
         ILogger<TestSummaryFunction> logger,
         RssFeedService rssFeedService,
-        TweetFormatterService tweetFormatterService)
+        TweetFormatterService tweetFormatterService,
+        VSCodeReleaseNotesService vsCodeReleaseNotesService)
     {
         _logger = logger;
         _rssFeedService = rssFeedService;
         _tweetFormatterService = tweetFormatterService;
+        _vsCodeReleaseNotesService = vsCodeReleaseNotesService;
     }
 
     [Function("TestSummary")]
@@ -33,18 +36,26 @@ public class TestSummaryFunction
 
         try
         {
+            var typeLower = type.ToLowerInvariant();
+
             // Validate type parameter
-            if (type.ToLowerInvariant() != "cli" && type.ToLowerInvariant() != "sdk")
+            if (typeLower != "cli" && typeLower != "sdk" && typeLower != "vscode")
             {
                 response.StatusCode = HttpStatusCode.BadRequest;
-                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli' or 'sdk'.");
+                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli', 'sdk', or 'vscode'.");
                 return response;
+            }
+
+            // VS Code path
+            if (typeLower == "vscode")
+            {
+                return await HandleVSCodeTestSummaryAsync(response);
             }
 
             // Determine feed URL based on type
             string feedUrl;
             bool isSdkFeed;
-            if (type.ToLowerInvariant() == "sdk")
+            if (typeLower == "sdk")
             {
                 feedUrl = "https://github.com/github/copilot-sdk/releases.atom";
                 isSdkFeed = true;
@@ -106,5 +117,41 @@ public class TestSummaryFunction
             await response.WriteStringAsync($"Error: {ex.Message}");
             return response;
         }
+    }
+
+    private async Task<HttpResponseData> HandleVSCodeTestSummaryAsync(HttpResponseData response)
+    {
+        _logger.LogInformation("Fetching today's VS Code Insiders release notes");
+
+        var notes = await _vsCodeReleaseNotesService.GetTodayReleaseNotesAsync();
+        if (notes == null || notes.Features.Count == 0)
+        {
+            response.StatusCode = HttpStatusCode.NotFound;
+            await response.WriteStringAsync("No VS Code Insiders release notes found for today.");
+            return response;
+        }
+
+        var summary = await _vsCodeReleaseNotesService.GenerateSummaryAsync(
+            notes,
+            maxLength: 220,
+            format: "test-daily",
+            forceRefresh: true);
+
+        var url = "https://aka.ms/vscode/updates/insiders";
+        var today = DateTime.UtcNow.Date;
+        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, url);
+
+        response.StatusCode = HttpStatusCode.OK;
+        response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
+
+        var output = $"VS Code Insiders: {notes.Date:yyyy-MM-dd}\n";
+        output += $"Features: {notes.Features.Count}\n";
+        output += $"Source: {notes.VersionUrl}\n\n";
+        output += $"Formatted Tweet ({tweet.Length} chars):\n";
+        output += "═══════════════════════════════════════\n";
+        output += tweet;
+
+        await response.WriteStringAsync(output);
+        return response;
     }
 }

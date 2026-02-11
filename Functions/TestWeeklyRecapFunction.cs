@@ -13,6 +13,7 @@ public class TestWeeklyRecapFunction
     private readonly ILogger<TestWeeklyRecapFunction> _logger;
     private readonly RssFeedService _rssFeedService;
     private readonly TweetFormatterService _tweetFormatterService;
+    private readonly VSCodeReleaseNotesService _vsCodeReleaseNotesService;
 
     private const string FeedUrl = "https://github.com/github/copilot-cli/releases.atom";
 
@@ -23,16 +24,19 @@ public class TestWeeklyRecapFunction
     public TestWeeklyRecapFunction(
         ILogger<TestWeeklyRecapFunction> logger,
         RssFeedService rssFeedService,
-        TweetFormatterService tweetFormatterService)
+        TweetFormatterService tweetFormatterService,
+        VSCodeReleaseNotesService vsCodeReleaseNotesService)
     {
         _logger = logger;
         _rssFeedService = rssFeedService;
         _tweetFormatterService = tweetFormatterService;
+        _vsCodeReleaseNotesService = vsCodeReleaseNotesService;
     }
 
     [Function("TestWeeklyRecap")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "test-weekly-recap")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "test-weekly-recap/{type?}")] HttpRequestData req,
+        string? type)
     {
         _logger.LogInformation("TestWeeklyRecap function called at: {Time}", DateTime.UtcNow);
 
@@ -40,6 +44,20 @@ public class TestWeeklyRecapFunction
 
         try
         {
+            var typeLower = (type ?? "cli").ToLowerInvariant();
+
+            if (typeLower != "cli" && typeLower != "vscode")
+            {
+                response.StatusCode = HttpStatusCode.BadRequest;
+                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli' or 'vscode'.");
+                return response;
+            }
+
+            if (typeLower == "vscode")
+            {
+                return await HandleVSCodeWeeklyRecapAsync(req, response);
+            }
+
             var pacificTimeZone = GetPacificTimeZone();
             var weekEndPacific = GetWeekEndPacific(req, pacificTimeZone);
             var weekStartPacific = weekEndPacific.AddDays(-7);
@@ -145,6 +163,49 @@ public class TestWeeklyRecapFunction
         var withoutTags = HtmlTagPattern.Replace(html, " ");
         var normalized = WhitespacePattern.Replace(withoutTags, " ");
         return normalized.Trim();
+    }
+
+    private async Task<HttpResponseData> HandleVSCodeWeeklyRecapAsync(HttpRequestData req, HttpResponseData response)
+    {
+        var pacificTimeZone = GetPacificTimeZone();
+        var weekEndPacific = GetWeekEndPacific(req, pacificTimeZone);
+        var weekStartDate = weekEndPacific.Date.AddDays(-6);
+        var weekEndDate = weekEndPacific.Date;
+
+        _logger.LogInformation("Fetching VS Code Insiders weekly recap for {Start} to {End}",
+            weekStartDate.ToString("yyyy-MM-dd"), weekEndDate.ToString("yyyy-MM-dd"));
+
+        var notes = await _vsCodeReleaseNotesService.GetReleaseNotesForDateRangeAsync(weekStartDate, weekEndDate);
+        if (notes == null || notes.Features.Count == 0)
+        {
+            response.StatusCode = HttpStatusCode.NotFound;
+            await response.WriteStringAsync($"No VS Code Insiders release notes found for {weekStartDate:yyyy-MM-dd} to {weekEndDate:yyyy-MM-dd}.");
+            return response;
+        }
+
+        var cacheFormat = $"test-weekly-{weekStartDate:yyyyMMdd}-{weekEndDate:yyyyMMdd}";
+        var summary = await _vsCodeReleaseNotesService.GenerateSummaryAsync(
+            notes,
+            maxLength: 220,
+            format: cacheFormat,
+            forceRefresh: true,
+            isThisWeek: true);
+
+        var url = "https://aka.ms/vscode/updates/insiders";
+        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, weekStartDate, weekEndDate, url);
+
+        response.StatusCode = HttpStatusCode.OK;
+        response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
+
+        var output = $"Weekly window (PT): {weekStartDate:yyyy-MM-dd} to {weekEndDate:yyyy-MM-dd}\n";
+        output += $"Features: {notes.Features.Count}\n";
+        output += $"Source: {notes.VersionUrl}\n\n";
+        output += $"Formatted Tweet ({tweet.Length} chars):\n";
+        output += "═══════════════════════════════════════\n";
+        output += tweet;
+
+        await response.WriteStringAsync(output);
+        return response;
     }
 
     private static TimeZoneInfo GetPacificTimeZone()
