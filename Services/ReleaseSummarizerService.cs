@@ -179,6 +179,10 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         {
             return BuildCliParagraphUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, Math.Min(maxItems, 6));
         }
+        if (feedType == "vscode-week")
+        {
+            return BuildVSCodeWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
+        }
         if (feedType == "vscode")
         {
             return BuildVSCodeUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
@@ -418,6 +422,46 @@ VS Code Insiders brings exciting updates to the chat experience and terminal fun
 🔧 New terminal sticky scroll setting
 🎨 Chat overlay hover UI enhanced
 ...and 3 more";
+    }
+
+    private static string BuildVSCodeWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
+    {
+        var lines = new[]
+        {
+            $"Create a weekly recap summary of the following VS Code Insiders release notes for {releaseTitle}.",
+            string.Empty,
+            "Release Content:",
+            releaseContent,
+            string.Empty,
+            $"Total items in release window: {totalItemCount}",
+            $"Target items to show: {targetItems}",
+            string.Empty,
+            "Requirements:",
+            $"- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)",
+            "- Start with 1-2 sentences summarizing the week's most impactful VS Code Insiders changes",
+            $"- After the summary sentences, include UP TO {targetItems} of the most important features across the week",
+            "- Deduplicate similar items across days; focus on themes and top features",
+            "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
+            "- Focus ONLY on what the features do, not who contributed them",
+            "- Use emojis to make it visually appealing",
+            "- Each feature should be on its own line",
+            "- Keep descriptions concise (aim for 35-45 characters per line)",
+            "- If you show fewer items than the total, add ...and X more as the FINAL line",
+            "- DO NOT include any markdown formatting or headers",
+            "- DO NOT include version numbers or dates",
+            "- Output ONLY the summary and formatted feature list, nothing else",
+            string.Empty,
+            "Example output format:",
+            "This week VS Code Insiders brings chat refinements, faster terminal rendering, and new editor conveniences.",
+            string.Empty,
+            "✨ Improved inline chat discoverability",
+            "⚡ Faster terminal rendering for large output",
+            "🔧 New sticky scroll setting in terminal",
+            "🎨 Chat overlay hover UI enhanced",
+            "...and 5 more"
+        };
+
+        return string.Join("\n", lines);
     }
 
     private static string BuildVSCodeAiUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)

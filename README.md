@@ -283,6 +283,11 @@ curl -X POST "http://localhost:7071/api/github-changelog/copilot" \
 - Schedule: `0 0 22,23 * * *` (daily; posts at 3 PM PT)
 - Source: VS Code updates at `https://code.visualstudio.com/updates/v1_*`
 
+**VSCodeWeeklyRecap**
+
+- Schedule: `0 0 17,18 * * 6` (Saturday; posts at 10 AM PT)
+- Source: VS Code updates at `https://code.visualstudio.com/updates/v1_*`
+
 ## Project Structure
 
 ```
@@ -294,6 +299,7 @@ auto-tweet-rss/
 ├── Functions/
 │   ├── ReleaseNotifierFunction.cs # Timer trigger for Copilot CLI (every 15 min)
 │   ├── SdkReleaseNotifierFunction.cs # Timer trigger for Copilot SDK (every 15 min)
+│   ├── VSCodeWeeklyRecapFunction.cs # Timer trigger for VS Code weekly recap (Saturday)
 │   └── TestSummaryFunction.cs     # HTTP endpoint for testing AI summaries
 └── Services/
     ├── RssFeedService.cs          # Fetches and filters RSS feeds

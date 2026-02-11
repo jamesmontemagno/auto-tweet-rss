@@ -277,7 +277,7 @@ public partial class VSCodeReleaseNotesService
 
                 var feedType = aiOnly
                     ? (isThisWeek ? "vscode-week-ai" : "vscode-ai")
-                    : "vscode";
+                    : (isThisWeek ? "vscode-week" : "vscode");
 
                 summary = await _releaseSummarizer.SummarizeReleaseAsync(
                     $"VS Code Insiders {notes.Date:MMMM d, yyyy}",
