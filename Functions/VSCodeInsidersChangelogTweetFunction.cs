@@ -74,17 +74,22 @@ public class VSCodeInsidersChangelogTweetFunction
             var cacheFormat = $"daily-tweet-{today:yyyyMMdd}";
             var summary = await _releaseNotesService.GenerateSummaryAsync(
                 notes,
-                maxLength: 220,
+                maxLength: 260,
                 format: cacheFormat,
                 forceRefresh: false,
                 aiOnly: false,
                 isThisWeek: false);
 
-            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, notes.WebsiteUrl);
+            var xPost = _tweetFormatterService.FormatVSCodeChangelogTweetForX(summary, today, today, notes.WebsiteUrl);
+            var blueskyPost = _tweetFormatterService.FormatVSCodeChangelogTweetForBluesky(summary, today, today, notes.WebsiteUrl);
 
-            _logger.LogInformation("Formatted VS Code changelog tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
+            _logger.LogInformation("Formatted VS Code changelog X post ({Length} chars):\n{Post}", xPost.Length, xPost);
+            _logger.LogInformation("Formatted VS Code changelog Bluesky post ({Length} chars):\n{Post}", blueskyPost.Length, blueskyPost);
 
-            var success = await _publisher.PostToAllAsync(tweet);
+            var success = await _publisher.PostToAllAsync(client =>
+                string.Equals(client.PlatformName, "Bluesky", StringComparison.OrdinalIgnoreCase)
+                    ? blueskyPost
+                    : xPost);
             if (success)
             {
                 await _stateTrackingService.SetLastProcessedIdAsync(todayString, StateFileName);

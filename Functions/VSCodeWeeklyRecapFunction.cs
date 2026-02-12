@@ -78,17 +78,22 @@ public class VSCodeWeeklyRecapFunction
             var cacheFormat = $"weekly-tweet-{weekStartDate:yyyyMMdd}-{weekEndDate:yyyyMMdd}";
             var summary = await _releaseNotesService.GenerateSummaryAsync(
                 notes,
-                maxLength: 220,
+                maxLength: 260,
                 format: cacheFormat,
                 forceRefresh: false,
                 aiOnly: false,
                 isThisWeek: true);
 
-            var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
+            var xPost = _tweetFormatterService.FormatVSCodeChangelogTweetForX(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
+            var blueskyPost = _tweetFormatterService.FormatVSCodeChangelogTweetForBluesky(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
 
-            _logger.LogInformation("Formatted VS Code weekly recap tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
+            _logger.LogInformation("Formatted VS Code weekly recap X post ({Length} chars):\n{Post}", xPost.Length, xPost);
+            _logger.LogInformation("Formatted VS Code weekly recap Bluesky post ({Length} chars):\n{Post}", blueskyPost.Length, blueskyPost);
 
-            var success = await _publisher.PostToAllAsync(tweet);
+            var success = await _publisher.PostToAllAsync(client =>
+                string.Equals(client.PlatformName, "Bluesky", StringComparison.OrdinalIgnoreCase)
+                    ? blueskyPost
+                    : xPost);
             if (success)
             {
                 await _stateTrackingService.SetLastProcessedIdAsync(todayKey, StateFileName);

@@ -12,6 +12,7 @@ public partial class TweetFormatterService
 
     // Twitter limits
     private const int MaxTweetLength = 280;
+    private const int MaxBlueskyLength = 300;
     private const int UrlLength = 23; // t.co shortens all URLs to 23 chars
     private const string Hashtag = "#GitHubCopilotCLI";
     private const string SdkHashtag = "#GitHubCopilotSDK";
@@ -258,6 +259,21 @@ public partial class TweetFormatterService
 
     public string FormatVSCodeChangelogTweet(string summary, DateTime startDate, DateTime endDate, string url)
     {
+        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxTweetLength, UrlLength);
+    }
+
+    public string FormatVSCodeChangelogTweetForX(string summary, DateTime startDate, DateTime endDate, string url)
+    {
+        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxTweetLength, UrlLength);
+    }
+
+    public string FormatVSCodeChangelogTweetForBluesky(string summary, DateTime startDate, DateTime endDate, string url)
+    {
+        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxBlueskyLength, url.Length);
+    }
+
+    private string FormatVSCodeChangelogPost(string summary, DateTime startDate, DateTime endDate, string url, int maxPostLength, int effectiveUrlLength)
+    {
         var dateLabel = startDate.Date == endDate.Date
             ? FormatShortDate(endDate)
             : $"{FormatShortDate(startDate)}-{FormatShortDate(endDate)}";
@@ -270,7 +286,7 @@ public partial class TweetFormatterService
 
         var newlines = 6; // 2 between header/summary, 2 between summary/url, 2 between url/hashtag
         var buffer = 4;
-        var availableForSummary = MaxTweetLength - header.Length - UrlLength - VSCodeHashtag.Length - newlines - buffer;
+        var availableForSummary = maxPostLength - header.Length - effectiveUrlLength - VSCodeHashtag.Length - newlines - buffer;
         if (availableForSummary < 0)
         {
             availableForSummary = 0;
@@ -291,9 +307,9 @@ public partial class TweetFormatterService
 
         var tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
 
-        if (tweet.Length > MaxTweetLength)
+        if (tweet.Length > maxPostLength)
         {
-            var overflow = tweet.Length - MaxTweetLength;
+            var overflow = tweet.Length - maxPostLength;
             summary = TruncatePreservingMoreIndicator(summary, overflow);
             tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
         }
@@ -374,7 +390,7 @@ public partial class TweetFormatterService
         return tweet;
     }
 
-    private string ExtractFeatures(string htmlContent, int maxLength, int maxItems = 3)
+    private string ExtractFeatures(string htmlContent, int maxLength, int maxItems = int.MaxValue)
     {
         // Decode HTML entities
         var decoded = HttpUtility.HtmlDecode(htmlContent);
@@ -407,7 +423,7 @@ public partial class TweetFormatterService
                     .Where(l => !string.IsNullOrWhiteSpace(l) && !IsDateLine(l))
                     .ToList();
                 
-                foreach (var line in lines.Take(3))
+                foreach (var line in lines.Take(maxItems))
                 {
                     var emoji = GetEmojiForFeature(line);
                     features.Add($"{emoji} {line}");
@@ -554,7 +570,7 @@ public partial class TweetFormatterService
         // Build summary string, respecting max length
         var result = new List<string>();
         var currentLength = 0;
-        var maxItems = 3; // Limit to top 3 items
+        var maxItems = Math.Clamp((maxLength - 12) / 45, 1, 12);
         
         foreach (var change in changes.Take(maxItems))
         {

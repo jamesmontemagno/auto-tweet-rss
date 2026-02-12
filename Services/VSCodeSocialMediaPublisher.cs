@@ -31,6 +31,15 @@ public class VSCodeSocialMediaPublisher
     /// <returns>True if at least one platform posted successfully.</returns>
     public async Task<bool> PostToAllAsync(string text)
     {
+        return await PostToAllAsync(_ => text);
+    }
+
+    /// <summary>
+    /// Posts platform-specific text to all configured platforms independently.
+    /// </summary>
+    /// <returns>True if at least one platform posted successfully.</returns>
+    public async Task<bool> PostToAllAsync(Func<ISocialMediaClient, string> textSelector)
+    {
         var anySuccess = false;
         var anyConfigured = false;
 
@@ -46,6 +55,7 @@ public class VSCodeSocialMediaPublisher
 
             try
             {
+                var text = textSelector(client);
                 var success = await client.PostAsync(text);
                 if (success)
                 {
