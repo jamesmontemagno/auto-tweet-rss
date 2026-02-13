@@ -424,13 +424,13 @@ Example output format (showing 4 features from 6 total):
 🎨 Enhanced chat overlay UI
 ...and 2 more
 
-Example output format (showing 5 features from 7 total):
+Example output format (showing 5 features from 8 total):
 ✨ Faster bracket colorization
 ⚡ Improved terminal rendering
 🔧 New sticky scroll setting
 🎨 Enhanced chat overlay UI
 🐛 Fixed file watcher issue
-...and 2 more";
+...and 3 more";
     }
 
     private static string BuildVSCodeWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
