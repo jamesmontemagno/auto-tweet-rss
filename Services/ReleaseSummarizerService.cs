@@ -403,22 +403,34 @@ Target items to show: {targetItems}
 
 Requirements:
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
+- CRITICAL: Your PRIMARY GOAL is to show AS MANY features as possible within the character limit
+- Aim to show at least 3-5 features explicitly before using ""...and X more""
 - Output ONLY a list of the most important features, one per line, each starting with an emoji
 - Do NOT include any introductory sentences, paragraph summary, or commentary
 - NEVER include user names, contributor names, or issue/PR numbers
 - Focus ONLY on what the feature does, not who contributed it
 - Use varied emojis to make it visually appealing (✨ ⚡ 🔧 🎨 🐛 🔒 📖 etc.)
-- Keep descriptions concise (aim for 35-50 characters per line)
+- Keep descriptions VERY concise (25-40 characters per line) to maximize the number of features shown
+- Prioritize brevity over detail - shorter descriptions allow more features to be listed
 - If you show fewer items than the total, add ""...and X more"" as the FINAL line
 - DO NOT include any markdown formatting or headers
 - Output ONLY the formatted feature list, nothing else
+- REMEMBER: More features shown explicitly is ALWAYS better than longer descriptions!
 
-Example output format:
-✨ Improved inline chat discoverability
-⚡ Better performance for long sessions
-🔧 New terminal sticky scroll setting
-🎨 Chat overlay hover UI enhanced
-...and 3 more";
+Example output format (showing 4 features from 6 total):
+✨ Faster bracket colorization
+⚡ Improved terminal rendering
+🔧 New sticky scroll setting
+🎨 Enhanced chat overlay UI
+...and 2 more
+
+Example output format (showing 5 features from 7 total):
+✨ Faster bracket colorization
+⚡ Improved terminal rendering
+🔧 New sticky scroll setting
+🎨 Enhanced chat overlay UI
+🐛 Fixed file watcher issue
+...and 2 more";
     }
 
     private static string BuildVSCodeWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
