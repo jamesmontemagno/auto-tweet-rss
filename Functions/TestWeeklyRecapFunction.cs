@@ -184,14 +184,23 @@ public class TestWeeklyRecapFunction
         }
 
         var cacheFormat = $"test-weekly-{weekStartDate:yyyyMMdd}-{weekEndDate:yyyyMMdd}";
-        var summary = await _vsCodeReleaseNotesService.GenerateSummaryAsync(
-            notes,
-            maxLength: 220,
-            format: cacheFormat,
-            forceRefresh: true,
-            isThisWeek: true);
 
-        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
+        var featureCount = notes.Features.Count;
+        var weekStartOffset = new DateTimeOffset(weekStartDate, TimeSpan.Zero);
+        var weekEndOffset = new DateTimeOffset(weekEndDate, TimeSpan.Zero);
+
+        async Task<string> GenerateSummary(int maxLength)
+        {
+            return await _vsCodeReleaseNotesService.GenerateSummaryAsync(
+                notes,
+                maxLength: maxLength,
+                format: $"{cacheFormat}-{maxLength}",
+                forceRefresh: true,
+                isThisWeek: true);
+        }
+
+        var tweet = await _tweetFormatterService.FormatVSCodeWeeklyRecapForXAsync(
+            featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");

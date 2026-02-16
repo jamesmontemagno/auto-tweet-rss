@@ -196,7 +196,7 @@ public partial class TweetFormatterService
         var releaseWord = releaseCount == 1 ? "release" : "releases";
         var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
         var header = string.Join("\n",
-            $"🗓️ Weekly Copilot CLI recap ({dateRange})",
+            $"🗓️ Weekly recap ({dateRange})",
             $"🚀 Releases: {releaseCount} {releaseWord}",
             $"🛠️ Improvements: {improvementCount} {improvementWord}");
 
@@ -270,6 +270,69 @@ public partial class TweetFormatterService
     public string FormatVSCodeChangelogTweetForBluesky(string summary, DateTime startDate, DateTime endDate, string url)
     {
         return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxBlueskyLength, url.Length);
+    }
+
+    public async Task<string> FormatVSCodeWeeklyRecapForXAsync(
+        int featureCount,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        string url,
+        Func<int, Task<string>> generateSummary)
+    {
+        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxTweetLength, UrlLength, generateSummary);
+    }
+
+    public async Task<string> FormatVSCodeWeeklyRecapForBlueskyAsync(
+        int featureCount,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        string url,
+        Func<int, Task<string>> generateSummary)
+    {
+        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxBlueskyLength, url.Length, generateSummary);
+    }
+
+    private async Task<string> FormatVSCodeWeeklyRecapPostAsync(
+        int featureCount,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        string url,
+        int maxPostLength,
+        int effectiveUrlLength,
+        Func<int, Task<string>> generateSummary)
+    {
+        var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
+        var featureWord = featureCount == 1 ? "feature" : "features";
+        var header = string.Join("\n",
+            $"🗓️ Weekly recap ({dateRange})",
+            $"✨ {featureCount} new {featureWord}");
+
+        var highlightsPrefix = "Highlights:\n";
+        var newlines = 7; // 2 after header, 1 after prefix, 2 after highlights, 2 after URL
+        var buffer = 4;
+        var availableForHighlights = maxPostLength - header.Length - highlightsPrefix.Length - effectiveUrlLength - VSCodeHashtag.Length - newlines - buffer;
+        if (availableForHighlights < 0)
+        {
+            availableForHighlights = 0;
+        }
+
+        var highlights = await generateSummary(availableForHighlights);
+
+        if (string.IsNullOrWhiteSpace(highlights))
+        {
+            highlights = "✨ See the latest Insiders updates";
+        }
+
+        var post = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{VSCodeHashtag}";
+
+        if (post.Length > maxPostLength)
+        {
+            var overflow = post.Length - maxPostLength;
+            highlights = TruncatePreservingMoreIndicator(highlights, overflow);
+            post = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{VSCodeHashtag}";
+        }
+
+        return post;
     }
 
     private string FormatVSCodeChangelogPost(string summary, DateTime startDate, DateTime endDate, string url, int maxPostLength, int effectiveUrlLength)

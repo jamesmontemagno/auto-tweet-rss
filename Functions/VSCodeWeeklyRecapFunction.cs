@@ -75,17 +75,26 @@ public class VSCodeWeeklyRecapFunction
                 return;
             }
 
-            var cacheFormat = $"weekly-tweet-{weekStartDate:yyyyMMdd}-{weekEndDate:yyyyMMdd}";
-            var summary = await _releaseNotesService.GenerateSummaryAsync(
-                notes,
-                maxLength: 260,
-                format: cacheFormat,
-                forceRefresh: false,
-                aiOnly: false,
-                isThisWeek: true);
+            var featureCount = notes.Features.Count;
+            var weekStartOffset = new DateTimeOffset(weekStartDate, TimeSpan.Zero);
+            var weekEndOffset = new DateTimeOffset(weekEndDate, TimeSpan.Zero);
 
-            var xPost = _tweetFormatterService.FormatVSCodeChangelogTweetForX(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
-            var blueskyPost = _tweetFormatterService.FormatVSCodeChangelogTweetForBluesky(summary, weekStartDate, weekEndDate, notes.WebsiteUrl);
+            async Task<string> GenerateSummary(int maxLength)
+            {
+                var cacheFormat = $"weekly-tweet-{weekStartDate:yyyyMMdd}-{weekEndDate:yyyyMMdd}-{maxLength}";
+                return await _releaseNotesService.GenerateSummaryAsync(
+                    notes,
+                    maxLength: maxLength,
+                    format: cacheFormat,
+                    forceRefresh: false,
+                    aiOnly: false,
+                    isThisWeek: true);
+            }
+
+            var xPost = await _tweetFormatterService.FormatVSCodeWeeklyRecapForXAsync(
+                featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
+            var blueskyPost = await _tweetFormatterService.FormatVSCodeWeeklyRecapForBlueskyAsync(
+                featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
 
             _logger.LogInformation("Formatted VS Code weekly recap X post ({Length} chars):\n{Post}", xPost.Length, xPost);
             _logger.LogInformation("Formatted VS Code weekly recap Bluesky post ({Length} chars):\n{Post}", blueskyPost.Length, blueskyPost);
