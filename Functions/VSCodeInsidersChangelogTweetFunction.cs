@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using AutoTweetRss.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -32,8 +30,8 @@ public class VSCodeInsidersChangelogTweetFunction
     }
 
     /// <summary>
-    /// Polls every 30 minutes to check if VS Code Insiders release notes have been updated since the previous tweet.
-    /// Fetches an inclusive date range from the last tweeted date through today so delayed backfills are included.
+    /// Polls every 30 minutes to check if VS Code Insiders release notes have new entries after the last posted release-note date.
+    /// Fetches only strictly newer dates so each release-note day is posted once.
     /// </summary>
     [Function("VSCodeInsidersChangelogTweet")]
     public async Task Run([TimerTrigger("0 */30 * * * *")] TimerInfo timerInfo)
@@ -57,7 +55,6 @@ public class VSCodeInsidersChangelogTweetFunction
             var lastState = await _stateTrackingService.GetLastProcessedIdAsync(StateFileName);
             var startDate = today;
             DateTime? lastReleaseDate = null;
-            string? lastNotesHash = null;
 
             if (!string.IsNullOrWhiteSpace(lastState))
             {
@@ -72,17 +69,20 @@ public class VSCodeInsidersChangelogTweetFunction
                     out var parsedLastDate))
                 {
                     lastReleaseDate = parsedLastDate.Date;
-                    startDate = parsedLastDate.Date <= today ? parsedLastDate.Date : today;
-
-                    if (stateParts.Length > 1 && !string.IsNullOrWhiteSpace(stateParts[1]))
+                    if (lastReleaseDate.Value >= today)
                     {
-                        lastNotesHash = stateParts[1];
+                        _logger.LogInformation(
+                            "Latest posted release-note date is {Date}; no newer dates available yet. Skipping.",
+                            lastReleaseDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                        return;
                     }
 
+                    startDate = lastReleaseDate.Value.AddDays(1);
+
                     _logger.LogInformation(
-                        "Loaded previous changelog state: release date {Date}{HashSuffix}.",
+                        "Loaded previous changelog state: last posted release-note date {Date}. Checking newer dates starting {StartDate}.",
                         lastReleaseDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        string.IsNullOrWhiteSpace(lastNotesHash) ? string.Empty : $", hash {lastNotesHash}");
+                        startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 }
                 else
                 {
@@ -105,16 +105,14 @@ public class VSCodeInsidersChangelogTweetFunction
 
             var latestReleaseDate = (notes.LatestFeatureDate ?? today).Date;
             var latestReleaseDateString = latestReleaseDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var notesHash = ComputeNotesHash(notes, latestReleaseDateString);
 
             if (lastReleaseDate.HasValue
-                && string.Equals(lastNotesHash, notesHash, StringComparison.Ordinal)
-                && lastReleaseDate.Value.Date == latestReleaseDate)
+                && latestReleaseDate <= lastReleaseDate.Value.Date)
             {
                 _logger.LogInformation(
-                    "No changelog content changes since last post. Last release date {Date} with hash {Hash}. Skipping.",
+                    "Latest release-note date {LatestDate} is not newer than last posted date {LastDate}. Skipping.",
                     latestReleaseDateString,
-                    notesHash);
+                    lastReleaseDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 return;
             }
 
@@ -144,13 +142,11 @@ public class VSCodeInsidersChangelogTweetFunction
                     : xPost);
             if (success)
             {
-                var stateToPersist = $"{latestReleaseDateString}|{notesHash}";
                 _logger.LogInformation(
-                    "Persisting VS Code changelog state as latest release date {Date} with hash {Hash} into {StateFileName}.",
+                    "Persisting VS Code changelog state as latest release-note date {Date} into {StateFileName}.",
                     latestReleaseDateString,
-                    notesHash,
                     StateFileName);
-                await _stateTrackingService.SetLastProcessedIdAsync(stateToPersist, StateFileName);
+                await _stateTrackingService.SetLastProcessedIdAsync(latestReleaseDateString, StateFileName);
                 _logger.LogInformation("Successfully posted VS Code changelog for range {StartDate} to {EndDate}",
                     startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                     latestReleaseDateString);
@@ -180,33 +176,5 @@ public class VSCodeInsidersChangelogTweetFunction
         {
             return TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
         }
-    }
-
-    private static string ComputeNotesHash(VSCodeReleaseNotes notes, string latestReleaseDate)
-    {
-        var builder = new StringBuilder();
-        builder.Append(latestReleaseDate);
-        builder.Append('|');
-        builder.Append(notes.VersionUrl);
-
-        foreach (var feature in notes.Features
-            .OrderBy(f => f.Title, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(f => f.Description, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(f => f.Category ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(f => f.Link ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-        {
-            builder.Append('|');
-            builder.Append(feature.Title);
-            builder.Append('|');
-            builder.Append(feature.Description);
-            builder.Append('|');
-            builder.Append(feature.Category ?? string.Empty);
-            builder.Append('|');
-            builder.Append(feature.Link ?? string.Empty);
-        }
-
-        var bytes = Encoding.UTF8.GetBytes(builder.ToString());
-        var hashBytes = SHA256.HashData(bytes);
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 }
