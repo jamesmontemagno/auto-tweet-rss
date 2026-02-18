@@ -90,8 +90,10 @@ public partial class VSCodeReleaseNotesService
                     continue;
 
                 var sections = ParseMarkdownSections(markdown, targetDate.Year);
-                var features = sections
+                var matchingSections = sections
                     .Where(s => s.Date.Date == targetDate.Date)
+                    .ToList();
+                var features = matchingSections
                     .SelectMany(s => s.Features)
                     .ToList();
 
@@ -109,7 +111,8 @@ public partial class VSCodeReleaseNotesService
                 {
                     Date = targetDate,
                     Features = features,
-                    VersionUrl = mdUrl
+                    VersionUrl = mdUrl,
+                    LatestFeatureDate = matchingSections.Max(s => s.Date.Date)
                 };
             }
             catch (HttpRequestException ex)
@@ -145,6 +148,7 @@ public partial class VSCodeReleaseNotesService
         var allFeatures = new List<VSCodeFeature>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? versionUrlForResponse = null;
+        DateTime? latestFeatureDate = null;
 
         foreach (var mdUrl in candidateUrls)
         {
@@ -159,8 +163,10 @@ public partial class VSCodeReleaseNotesService
                     continue;
 
                 var sections = ParseMarkdownSections(markdown, endDate.Year);
-                var features = sections
+                var matchingSections = sections
                     .Where(s => s.Date.Date >= startDate.Date && s.Date.Date <= endDate.Date)
+                    .ToList();
+                var features = matchingSections
                     .SelectMany(s => s.Features)
                     .ToList();
 
@@ -175,6 +181,10 @@ public partial class VSCodeReleaseNotesService
                     features.Count, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"), mdUrl);
 
                 versionUrlForResponse ??= mdUrl;
+                var latestInThisDocument = matchingSections.Max(s => s.Date.Date);
+                latestFeatureDate = !latestFeatureDate.HasValue || latestInThisDocument > latestFeatureDate.Value
+                    ? latestInThisDocument
+                    : latestFeatureDate;
 
                 foreach (var feature in features)
                 {
@@ -204,7 +214,8 @@ public partial class VSCodeReleaseNotesService
         {
             Date = endDate.Date,
             Features = allFeatures,
-            VersionUrl = versionUrlForResponse ?? candidateUrls.First()
+            VersionUrl = versionUrlForResponse ?? candidateUrls.First(),
+            LatestFeatureDate = latestFeatureDate
         };
     }
 
@@ -241,7 +252,8 @@ public partial class VSCodeReleaseNotesService
                 {
                     Date = today,
                     Features = features,
-                    VersionUrl = mdUrl
+                    VersionUrl = mdUrl,
+                    LatestFeatureDate = sections.Max(s => s.Date.Date)
                 };
             }
             catch (HttpRequestException ex)
@@ -672,6 +684,7 @@ public class VSCodeReleaseNotes
     public DateTime Date { get; set; }
     public required List<VSCodeFeature> Features { get; set; }
     public required string VersionUrl { get; set; }
+    public DateTime? LatestFeatureDate { get; set; }
 
     /// <summary>
     /// The human-readable website URL (e.g. https://code.visualstudio.com/updates/v1_110),
