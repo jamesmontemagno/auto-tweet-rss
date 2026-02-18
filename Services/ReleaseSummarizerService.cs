@@ -19,6 +19,9 @@ public class ReleaseSummarizerService
     private static readonly Regex ListItemPattern = new(@"<li[^>]*>(.*?)</li>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex HtmlTagPattern = new(@"<[^>]+>", RegexOptions.Compiled);
     private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex BulletLinePattern = new(@"^\s*[-*]\s+", RegexOptions.Compiled);
+    private static readonly Regex MoreIndicatorLinePattern = new(@"^\s*\.\.\.and\s+(\d+)\s+more\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EmojiFeatureLinePattern = new(@"^\s*[\p{So}\p{Sk}]", RegexOptions.Compiled);
 
     public ReleaseSummarizerService(
         ILogger<ReleaseSummarizerService> logger,
@@ -72,6 +75,7 @@ public class ReleaseSummarizerService
             // Use GetResponseAsync from version 10.2 API
             var response = await _chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken);
             var summary = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
+            summary = NormalizeMoreIndicator(summary, totalItemCount);
             
             _logger.LogInformation("Generated {FeedType} summary ({Length} chars): {Summary}", feedType, summary.Length, summary);
             
@@ -130,6 +134,29 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
                     count++;
                 }
             }
+
+            if (count > 0)
+            {
+                return count;
+            }
+
+            // Fallback for plain-text bullet input (e.g., "- title: description")
+            var lines = contentToCount.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                if (!BulletLinePattern.IsMatch(line))
+                {
+                    continue;
+                }
+
+                var text = BulletLinePattern.Replace(line, string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(text) &&
+                    !text.StartsWith("Full Changelog", StringComparison.OrdinalIgnoreCase) &&
+                    !text.Contains("made their first contribution", StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                }
+            }
             
             return count;
         }
@@ -148,6 +175,46 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         // Normalize whitespace
         var normalized = WhitespacePattern.Replace(withoutTags, " ");
         return normalized.Trim();
+    }
+
+    private static string NormalizeMoreIndicator(string summary, int totalItemCount)
+    {
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            return summary;
+        }
+
+        var normalized = summary.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var lines = normalized.Split('\n', StringSplitOptions.None).ToList();
+
+        if (lines.Count == 0)
+        {
+            return summary;
+        }
+
+        var lastLine = lines[^1].Trim();
+        if (!MoreIndicatorLinePattern.IsMatch(lastLine))
+        {
+            return normalized;
+        }
+
+        // Only remove a false "...and X more" when shown features >= totalItemCount.
+        // Never recalculate the number — trust the AI's judgment on consolidation.
+        var linesBeforeIndicator = lines.Take(lines.Count - 1).ToList();
+        var shownFeatureCount = linesBeforeIndicator.Count(line => EmojiFeatureLinePattern.IsMatch(line));
+
+        if (shownFeatureCount == 0)
+        {
+            shownFeatureCount = linesBeforeIndicator.Count(line => !string.IsNullOrWhiteSpace(line));
+        }
+
+        if (shownFeatureCount >= totalItemCount || totalItemCount <= 0)
+        {
+            lines.RemoveAt(lines.Count - 1);
+            return string.Join("\n", lines).TrimEnd();
+        }
+
+        return normalized;
     }
 
     private static string BuildUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, string feedType)
@@ -398,13 +465,13 @@ VS Code Insiders delivers a major update with significant improvements across ch
 Release Content:
 {releaseContent}
 
-Total items in release: {totalItemCount}
-Target items to show: {targetItems}
+Raw list items in changelog: {totalItemCount} (note: many items may be related or duplicates — consolidate related items into single features)
+Target features to show: {targetItems}
 
 Requirements:
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
-- CRITICAL: Your PRIMARY GOAL is to show AS MANY features as possible within the character limit
-- Aim to show at least 3-5 features explicitly before using ""...and X more""
+- CRITICAL: Your PRIMARY GOAL is to show AS MANY distinct features as possible within the character limit
+- Consolidate related list items into single feature descriptions rather than listing each separately
 - Output ONLY a list of the most important features, one per line, each starting with an emoji
 - Do NOT include any introductory sentences, paragraph summary, or commentary
 - NEVER include user names, contributor names, or issue/PR numbers
@@ -412,25 +479,29 @@ Requirements:
 - Use varied emojis to make it visually appealing (✨ ⚡ 🔧 🎨 🐛 🔒 📖 etc.)
 - Keep descriptions VERY concise (25-40 characters per line) to maximize the number of features shown
 - Prioritize brevity over detail - shorter descriptions allow more features to be listed
-- If you show fewer items than the total, add ""...and X more"" as the FINAL line
+- CRITICAL: ONLY add ""...and X more"" if you had to OMIT genuinely distinct features due to space constraints
+- DO NOT add ""...and X more"" if you consolidated multiple related items into a single feature description
+- DO NOT add ""...and X more"" if all meaningful features are already shown
 - DO NOT include any markdown formatting or headers
 - Output ONLY the formatted feature list, nothing else
 - REMEMBER: More features shown explicitly is ALWAYS better than longer descriptions!
 
-Example output format (showing 4 features from 6 total):
+Example output format (showing 4 features from 6 total, with 2 omitted):
 ✨ Faster bracket colorization
 ⚡ Improved terminal rendering
 🔧 New sticky scroll setting
 🎨 Enhanced chat overlay UI
 ...and 2 more
 
-Example output format (showing 5 features from 8 total):
+Example output format (showing 5 consolidated features from 8 list items, all features shown):
 ✨ Faster bracket colorization
 ⚡ Improved terminal rendering
 🔧 New sticky scroll setting
 🎨 Enhanced chat overlay UI
 🐛 Fixed file watcher issue
-...and 3 more";
+
+Example output format (single feature from multiple related list items):
+✨ Major terminal performance improvements";
     }
 
     private static string BuildVSCodeWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
