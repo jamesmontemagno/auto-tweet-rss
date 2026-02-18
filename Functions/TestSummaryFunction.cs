@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -49,7 +50,7 @@ public class TestSummaryFunction
             // VS Code path
             if (typeLower == "vscode")
             {
-                return await HandleVSCodeTestSummaryAsync(response);
+                return await HandleVSCodeTestSummaryAsync(req, response);
             }
 
             // Determine feed URL based on type
@@ -119,31 +120,42 @@ public class TestSummaryFunction
         }
     }
 
-    private async Task<HttpResponseData> HandleVSCodeTestSummaryAsync(HttpResponseData response)
+    private async Task<HttpResponseData> HandleVSCodeTestSummaryAsync(HttpRequestData req, HttpResponseData response)
     {
-        _logger.LogInformation("Fetching today's VS Code Insiders release notes");
+        var dateParam = GetQueryParameter(req, "date");
+        DateTime targetDate;
+        if (!string.IsNullOrEmpty(dateParam) &&
+            DateTime.TryParseExact(dateParam, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+        {
+            targetDate = parsed.Date;
+        }
+        else
+        {
+            targetDate = DateTime.UtcNow.Date;
+        }
 
-        var notes = await _vsCodeReleaseNotesService.GetTodayReleaseNotesAsync();
+        _logger.LogInformation("Fetching VS Code Insiders release notes for {Date}", targetDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+
+        var notes = await _vsCodeReleaseNotesService.GetReleaseNotesForDateRangeAsync(targetDate, targetDate);
         if (notes == null || notes.Features.Count == 0)
         {
             response.StatusCode = HttpStatusCode.NotFound;
-            await response.WriteStringAsync("No VS Code Insiders release notes found for today.");
+            await response.WriteStringAsync($"No VS Code Insiders release notes found for {targetDate:yyyy-MM-dd}.");
             return response;
         }
 
         var summary = await _vsCodeReleaseNotesService.GenerateSummaryAsync(
             notes,
             maxLength: 220,
-            format: "test-daily",
+            format: $"test-daily-{targetDate:yyyyMMdd}",
             forceRefresh: true);
 
-        var today = DateTime.UtcNow.Date;
-        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, today, today, notes.WebsiteUrl);
+        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, targetDate, targetDate, notes.WebsiteUrl);
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
 
-        var output = $"VS Code Insiders: {notes.Date:yyyy-MM-dd}\n";
+        var output = $"VS Code Insiders: {targetDate:yyyy-MM-dd}\n";
         output += $"Features: {notes.Features.Count}\n";
         output += $"Source: {notes.VersionUrl}\n\n";
         output += $"Formatted Tweet ({tweet.Length} chars):\n";
@@ -152,5 +164,11 @@ public class TestSummaryFunction
 
         await response.WriteStringAsync(output);
         return response;
+    }
+
+    private static string? GetQueryParameter(HttpRequestData req, string name)
+    {
+        var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+        return query[name];
     }
 }
