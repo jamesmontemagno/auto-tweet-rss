@@ -19,5 +19,7 @@ public class VSCodeTwitterApiClient : TwitterApiClient, ISocialMediaClient
     }
 
     public Task<bool> PostAsync(string text) => PostTweetAsync(text);
+
+    public Task<bool> PostThreadAsync(IReadOnlyList<string> posts) => PostTweetThreadAsync(posts);
 }
 

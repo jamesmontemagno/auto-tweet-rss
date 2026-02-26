@@ -91,18 +91,20 @@ public class VSCodeWeeklyRecapFunction
                     isThisWeek: true);
             }
 
-            var xPost = await _tweetFormatterService.FormatVSCodeWeeklyRecapForXAsync(
+            var xThread = await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForXAsync(
                 featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
-            var blueskyPost = await _tweetFormatterService.FormatVSCodeWeeklyRecapForBlueskyAsync(
+            var blueskyThread = await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForBlueskyAsync(
                 featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
 
-            _logger.LogInformation("Formatted VS Code weekly recap X post ({Length} chars):\n{Post}", xPost.Length, xPost);
-            _logger.LogInformation("Formatted VS Code weekly recap Bluesky post ({Length} chars):\n{Post}", blueskyPost.Length, blueskyPost);
+            _logger.LogInformation("Formatted VS Code weekly recap X thread ({PostCount} posts, first {Length} chars):\n{Post}",
+                xThread.Count, xThread[0].Length, xThread[0]);
+            _logger.LogInformation("Formatted VS Code weekly recap Bluesky thread ({PostCount} posts, first {Length} chars):\n{Post}",
+                blueskyThread.Count, blueskyThread[0].Length, blueskyThread[0]);
 
-            var success = await _publisher.PostToAllAsync(client =>
+            var success = await _publisher.PostThreadToAllAsync(client =>
                 string.Equals(client.PlatformName, "Bluesky", StringComparison.OrdinalIgnoreCase)
-                    ? blueskyPost
-                    : xPost);
+                    ? blueskyThread
+                    : xThread);
             if (success)
             {
                 await _stateTrackingService.SetLastProcessedIdAsync(todayKey, StateFileName);

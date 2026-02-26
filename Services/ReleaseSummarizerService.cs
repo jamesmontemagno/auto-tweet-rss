@@ -619,4 +619,118 @@ Example output format (single feature from multiple related list items):
 
         return string.Join("\n", lines);
     }
+
+    /// <summary>
+    /// Uses AI to generate a structured thread plan for a release or summary.
+    /// Returns null if AI is unavailable or the response cannot be parsed.
+    /// </summary>
+    public async Task<ThreadPlan?> PlanThreadAsync(
+        string releaseTitle,
+        string releaseContent,
+        string feedType,
+        int maxPostLength,
+        int maxPosts = 4,
+        int topHighlights = 3,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var totalItemCount = CountItemsInRelease(releaseContent, feedType);
+            var prompt = BuildThreadPlanPrompt(releaseTitle, releaseContent, feedType,
+                maxPostLength, maxPosts, topHighlights, totalItemCount);
+
+            var messages = new List<Microsoft.Extensions.AI.ChatMessage>
+            {
+                new(ChatRole.System, GetThreadPlanSystemPrompt()),
+                new(ChatRole.User, prompt)
+            };
+
+            _logger.LogInformation("Requesting AI thread plan for {FeedType} release: {Title} ({TotalItems} items)", feedType, releaseTitle, totalItemCount);
+
+            var response = await _chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken);
+            var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
+
+            // Strip any markdown code fences
+            if (json.StartsWith("```", StringComparison.Ordinal))
+            {
+                var firstNewline = json.IndexOf('\n');
+                var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
+                if (firstNewline >= 0 && lastFence > firstNewline)
+                {
+                    json = json[(firstNewline + 1)..lastFence].Trim();
+                }
+            }
+
+            var plan = System.Text.Json.JsonSerializer.Deserialize<ThreadPlan>(json, new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (plan == null || plan.TopHighlights == null || plan.ThreadPosts == null)
+            {
+                _logger.LogWarning("AI thread plan response was null or incomplete for {FeedType}: {Title}", feedType, releaseTitle);
+                return null;
+            }
+
+            // Clamp to configured limits
+            plan.TopHighlights = plan.TopHighlights.Take(topHighlights).ToList();
+            plan.ThreadPosts = plan.ThreadPosts.Take(Math.Max(0, maxPosts - 2)).ToList(); // -2 for first + last
+
+            _logger.LogInformation("Generated thread plan: {TotalCount} items, {Highlights} highlights, {Posts} follow-up posts",
+                plan.TotalCount, plan.TopHighlights.Count, plan.ThreadPosts.Count);
+
+            return plan;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating AI thread plan for {FeedType}: {Title}", feedType, releaseTitle);
+            return null;
+        }
+    }
+
+    private static string GetThreadPlanSystemPrompt() => @"You are an expert at analyzing software release notes and planning engaging social media threads.
+
+Your task is to plan a thread (reply chain) for a release announcement. You MUST respond with valid JSON only — no prose, no code fences.
+
+The JSON must have exactly these fields:
+- ""totalCount"": integer, total number of distinct features/fixes in the release
+- ""topHighlights"": array of strings, the most exciting highlights (each starts with an emoji, max 60 chars each)
+- ""threadPosts"": array of strings, follow-up post bodies (each post ≤ the maxPostLength, grouped thematically)
+
+Rules:
+- NEVER include user names, contributor names, or issue/PR numbers
+- Each highlight and thread post line must start with an emoji (✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨)
+- Keep each highlight concise (25-60 chars)
+- Group related items into the same follow-up post
+- Each follow-up post should list 3-5 items, one per line";
+
+    private static string BuildThreadPlanPrompt(
+        string releaseTitle, string releaseContent, string feedType,
+        int maxPostLength, int maxPosts, int topHighlights, int totalItemCount) =>
+        $@"Plan a {maxPosts}-post social media thread for this {feedType} release: {releaseTitle}
+
+Release Content:
+{releaseContent}
+
+Total items detected: {totalItemCount}
+Max post length: {maxPostLength} characters
+Desired top highlights for first post: {topHighlights}
+Max follow-up posts (excluding first and last): {Math.Max(0, maxPosts - 2)}
+
+Respond with JSON only. Example:
+{{
+  ""totalCount"": 8,
+  ""topHighlights"": [""✨ New interactive setup flow"", ""⚡ Faster indexing"", ""🐛 Fixed auth edge cases""],
+  ""threadPosts"": [""✨ Better file picker\n⚡ Reduced startup time\n🔒 Hardened token storage"", ""🐛 Fixed terminal rendering\n📖 Updated docs""]
+}}";
+}
+
+/// <summary>
+/// Represents an AI-generated plan for a social media thread.
+/// </summary>
+public class ThreadPlan
+{
+    public int TotalCount { get; set; }
+    public List<string> TopHighlights { get; set; } = [];
+    public List<string> ThreadPosts { get; set; } = [];
 }

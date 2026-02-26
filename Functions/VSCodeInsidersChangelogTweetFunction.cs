@@ -124,22 +124,24 @@ public class VSCodeInsidersChangelogTweetFunction
             var cacheFormat = $"daily-tweet-{startDate:yyyyMMdd}-{latestReleaseDate:yyyyMMdd}";
             var summary = await _releaseNotesService.GenerateSummaryAsync(
                 notes,
-                maxLength: 260,
+                maxLength: 800,
                 format: cacheFormat,
                 forceRefresh: false,
                 aiOnly: false,
                 isThisWeek: false);
 
-            var xPost = _tweetFormatterService.FormatVSCodeChangelogTweetForX(summary, startDate, latestReleaseDate, notes.WebsiteUrl);
-            var blueskyPost = _tweetFormatterService.FormatVSCodeChangelogTweetForBluesky(summary, startDate, latestReleaseDate, notes.WebsiteUrl);
+            var xThread = _tweetFormatterService.FormatVSCodeChangelogThreadForX(summary, notes.Features.Count, startDate, latestReleaseDate, notes.WebsiteUrl);
+            var blueskyThread = _tweetFormatterService.FormatVSCodeChangelogThreadForBluesky(summary, notes.Features.Count, startDate, latestReleaseDate, notes.WebsiteUrl);
 
-            _logger.LogInformation("Formatted VS Code changelog X post ({Length} chars):\n{Post}", xPost.Length, xPost);
-            _logger.LogInformation("Formatted VS Code changelog Bluesky post ({Length} chars):\n{Post}", blueskyPost.Length, blueskyPost);
+            _logger.LogInformation("Formatted VS Code changelog X thread ({PostCount} posts, first {Length} chars):\n{Post}",
+                xThread.Count, xThread[0].Length, xThread[0]);
+            _logger.LogInformation("Formatted VS Code changelog Bluesky thread ({PostCount} posts, first {Length} chars):\n{Post}",
+                blueskyThread.Count, blueskyThread[0].Length, blueskyThread[0]);
 
-            var success = await _publisher.PostToAllAsync(client =>
+            var success = await _publisher.PostThreadToAllAsync(client =>
                 string.Equals(client.PlatformName, "Bluesky", StringComparison.OrdinalIgnoreCase)
-                    ? blueskyPost
-                    : xPost);
+                    ? blueskyThread
+                    : xThread);
             if (success)
             {
                 _logger.LogInformation(

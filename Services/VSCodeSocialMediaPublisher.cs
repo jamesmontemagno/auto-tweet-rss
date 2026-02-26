@@ -80,4 +80,61 @@ public class VSCodeSocialMediaPublisher
 
         return anySuccess;
     }
+
+    /// <summary>
+    /// Posts a thread to all configured platforms independently.
+    /// </summary>
+    /// <returns>True if at least one platform posted the thread successfully.</returns>
+    public async Task<bool> PostThreadToAllAsync(IReadOnlyList<string> posts)
+    {
+        return await PostThreadToAllAsync(_ => posts);
+    }
+
+    /// <summary>
+    /// Posts platform-specific threads to all configured platforms independently.
+    /// </summary>
+    /// <returns>True if at least one platform posted the thread successfully.</returns>
+    public async Task<bool> PostThreadToAllAsync(Func<ISocialMediaClient, IReadOnlyList<string>> postsSelector)
+    {
+        var anySuccess = false;
+        var anyConfigured = false;
+
+        foreach (var client in _clients)
+        {
+            if (!client.IsConfigured)
+            {
+                _logger.LogInformation("{Platform} is not configured. Skipping.", client.PlatformName);
+                continue;
+            }
+
+            anyConfigured = true;
+
+            try
+            {
+                var posts = postsSelector(client);
+                _logger.LogInformation("Posting {Count}-post thread to {Platform}.", posts.Count, client.PlatformName);
+                var success = await client.PostThreadAsync(posts);
+                if (success)
+                {
+                    _logger.LogInformation("Successfully posted thread to {Platform}.", client.PlatformName);
+                    anySuccess = true;
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to post thread to {Platform}.", client.PlatformName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error posting thread to {Platform}.", client.PlatformName);
+            }
+        }
+
+        if (!anyConfigured)
+        {
+            _logger.LogWarning("No social media platforms are configured.");
+        }
+
+        return anySuccess;
+    }
 }
