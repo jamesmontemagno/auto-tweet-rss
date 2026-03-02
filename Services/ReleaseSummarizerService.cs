@@ -85,8 +85,8 @@ public class ReleaseSummarizerService
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Error generating AI summary for {FeedType} release: {Title}. MaxLength={MaxLength}, TotalItems={TotalItems}",
-                feedType, releaseTitle, maxLength, totalItemCount);
+                "Error generating AI summary for {FeedType} release: {Title}. MaxLength={MaxLength}",
+                feedType, releaseTitle, maxLength);
             throw;
         }
     }
@@ -690,15 +690,15 @@ Example output format (single feature from multiple related list items):
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex,
-                "Timed out generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}, TotalItems={TotalItems}",
-                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights, totalItemCount);
+                "Timed out generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}",
+                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights);
             return null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Error generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}, TotalItems={TotalItems}",
-                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights, totalItemCount);
+                "Error generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}",
+                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights);
             return null;
         }
     }
