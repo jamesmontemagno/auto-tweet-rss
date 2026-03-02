@@ -120,7 +120,7 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     "AI_API_KEY": "<your-azure-openai-api-key>",
     "AI_MODEL": "gpt-5-nano",
     "ENABLE_AI_SUMMARIES": "false",
-    "AI_THREAD_PLAN_TIMEOUT_SECONDS": "120"
+    "AI_THREAD_PLAN_TIMEOUT_SECONDS": "240"
   }
 }
 ```
@@ -148,8 +148,8 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
 | `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-5-nano`) |
 | `ENABLE_AI_SUMMARIES` | Enable AI-powered thread planning for timer functions | No (default: `false`) |
-| `AI_THREAD_PLAN_TIMEOUT_SECONDS` | Timeout (seconds) for AI thread-plan requests before fallback | No (default: `120`) |
-| `THREAD_MAX_POSTS` | Maximum number of posts per thread (including first and last) | No (default: `4`, minimum: `2`) |
+| `AI_THREAD_PLAN_TIMEOUT_SECONDS` | Timeout (seconds) for AI thread-plan requests before fallback | No (default: `240`) |
+| `THREAD_MAX_POSTS` | Maximum number of posts per thread (including first and last) | No (default: `6`, minimum: `2`) |
 | `THREAD_TOP_HIGHLIGHTS` | Number of top highlights shown in the first post | No (default: `3`, minimum: `1`) |
 
 ### Bluesky App Password
@@ -187,7 +187,7 @@ To enable AI-powered summaries:
    - `AI_ENDPOINT`: Your Azure OpenAI endpoint URL
    - `AI_API_KEY`: Your Azure OpenAI API key
    - `AI_MODEL`: Your deployment name (e.g., `gpt-4o-nano`)
-   - `AI_THREAD_PLAN_TIMEOUT_SECONDS`: Optional timeout for AI thread-plan requests (default: `120`)
+   - `AI_THREAD_PLAN_TIMEOUT_SECONDS`: Optional timeout for AI thread-plan requests (default: `240`)
 
 **Note**: If AI configuration is not provided, the system will fall back to manual HTML parsing and extraction of release notes.
 
@@ -210,7 +210,7 @@ To enable AI-powered summaries:
 4. **Thread behavior**: 
    - All streams now publish **threads** by default (first post + follow-ups + last post with link).
    - Thread structure is always applied; AI improves the ranking/grouping when configured.
-   - Control thread size with `THREAD_MAX_POSTS` (default: `4`) and `THREAD_TOP_HIGHLIGHTS` (default: `3`).
+   - Control thread size with `THREAD_MAX_POSTS` (default: `6`) and `THREAD_TOP_HIGHLIGHTS` (default: `3`).
 
 5. **AI Thread Planning**: 
    - Timer functions always run every 15 minutes (automatic)

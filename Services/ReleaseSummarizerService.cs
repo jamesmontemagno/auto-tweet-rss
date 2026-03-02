@@ -12,7 +12,7 @@ namespace AutoTweetRss.Services;
 /// </summary>
 public class ReleaseSummarizerService
 {
-    private const int DefaultThreadPlanTimeoutSeconds = 120;
+    private const int DefaultThreadPlanTimeoutSeconds = 240;
     private readonly IChatClient _chatClient;
     private readonly ILogger<ReleaseSummarizerService> _logger;
     
@@ -84,9 +84,11 @@ public class ReleaseSummarizerService
         }
         catch (Exception ex)
         {
+            var errorCode = (ex as Azure.RequestFailedException)?.ErrorCode ?? "N/A";
+            var statusCode = (ex as Azure.RequestFailedException)?.Status.ToString() ?? "N/A";
             _logger.LogError(ex,
-                "Error generating AI summary for {FeedType} release: {Title}. MaxLength={MaxLength}",
-                feedType, releaseTitle, maxLength);
+                "Error generating AI summary for {FeedType} release: {Title}. MaxLength={MaxLength}, StatusCode={StatusCode}, ErrorCode={ErrorCode}, Message={ErrorMessage}",
+                feedType, releaseTitle, maxLength, statusCode, errorCode, ex.Message);
             throw;
         }
     }
@@ -178,6 +180,45 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         // Normalize whitespace
         var normalized = WhitespacePattern.Replace(withoutTags, " ");
         return normalized.Trim();
+    }
+
+    private static readonly Regex ContributorLinePattern = new(
+        @"(?:by\s+@\S+\s*(?:in\s+)?)?(?:https?://\S+/pull/\d+|#\d+)\s*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private const int MaxAiContentLength = 4000;
+
+    /// <summary>
+    /// Strips HTML, removes contributor/PR noise, truncates "New Contributors" section,
+    /// and caps total length to keep prompts within model token limits.
+    /// </summary>
+    private static string PrepareContentForAi(string rawContent)
+    {
+        var decoded = WebUtility.HtmlDecode(rawContent);
+
+        // Chop off "New Contributors" and "Full Changelog" sections
+        var cutoff = decoded.IndexOf("New Contributors", StringComparison.OrdinalIgnoreCase);
+        if (cutoff < 0)
+            cutoff = decoded.IndexOf("Full Changelog", StringComparison.OrdinalIgnoreCase);
+        if (cutoff > 0)
+            decoded = decoded[..cutoff];
+
+        // Strip HTML tags
+        var cleaned = HtmlTagPattern.Replace(decoded, " ");
+
+        // Remove contributor/PR references (e.g., "by @user in #123")
+        cleaned = ContributorLinePattern.Replace(cleaned, " ");
+
+        // Normalize whitespace and blank lines
+        cleaned = WhitespacePattern.Replace(cleaned, " ").Trim();
+
+        // Cap length to avoid exceeding model token limits
+        if (cleaned.Length > MaxAiContentLength)
+        {
+            cleaned = cleaned[..MaxAiContentLength] + "...[truncated]";
+        }
+
+        return cleaned;
     }
 
     private static string NormalizeMoreIndicator(string summary, int totalItemCount)
@@ -636,77 +677,101 @@ Example output format (single feature from multiple related list items):
         int topHighlights = 3,
         CancellationToken cancellationToken = default)
     {
-        try
+        const int maxRetries = 3;
+        var totalItemCount = CountItemsInRelease(releaseContent, feedType);
+        var prompt = BuildThreadPlanPrompt(releaseTitle, releaseContent, feedType,
+            maxPostLength, maxPosts, topHighlights, totalItemCount);
+
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            var totalItemCount = CountItemsInRelease(releaseContent, feedType);
-            var prompt = BuildThreadPlanPrompt(releaseTitle, releaseContent, feedType,
-                maxPostLength, maxPosts, topHighlights, totalItemCount);
+            new(ChatRole.System, GetThreadPlanSystemPrompt()),
+            new(ChatRole.User, prompt)
+        };
 
-            var messages = new List<Microsoft.Extensions.AI.ChatMessage>
+        var options = new ChatOptions
+        {
+            ResponseFormat = ChatResponseFormat.Json
+        };
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
             {
-                new(ChatRole.System, GetThreadPlanSystemPrompt()),
-                new(ChatRole.User, prompt)
-            };
+                _logger.LogInformation("Requesting AI thread plan for {FeedType} release: {Title} (attempt {Attempt}/{MaxRetries}, {TotalItems} items, prompt length {PromptLength} chars)",
+                    feedType, releaseTitle, attempt, maxRetries, totalItemCount, prompt.Length);
 
-            _logger.LogInformation("Requesting AI thread plan for {FeedType} release: {Title} ({TotalItems} items, prompt length {PromptLength} chars)",
-                feedType, releaseTitle, totalItemCount, prompt.Length);
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
 
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
+                var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
+                var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
 
-            var options = new ChatOptions
-            {
-                ResponseFormat = ChatResponseFormat.Json
-            };
-
-            var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
-            var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
-
-            // Strip any markdown code fences
-            if (json.StartsWith("```", StringComparison.Ordinal))
-            {
-                var firstNewline = json.IndexOf('\n');
-                var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
-                if (firstNewline >= 0 && lastFence > firstNewline)
+                // Strip any markdown code fences
+                if (json.StartsWith("```", StringComparison.Ordinal))
                 {
-                    json = json[(firstNewline + 1)..lastFence].Trim();
+                    var firstNewline = json.IndexOf('\n');
+                    var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
+                    if (firstNewline >= 0 && lastFence > firstNewline)
+                    {
+                        json = json[(firstNewline + 1)..lastFence].Trim();
+                    }
                 }
+
+                var plan = System.Text.Json.JsonSerializer.Deserialize<ThreadPlan>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (plan == null || plan.TopHighlights == null || plan.ThreadPosts == null)
+                {
+                    _logger.LogWarning("AI thread plan response was null or incomplete for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries})",
+                        feedType, releaseTitle, attempt, maxRetries);
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+                    return null;
+                }
+
+                // Clamp to configured limits
+                plan.TopHighlights = plan.TopHighlights.Take(topHighlights).ToList();
+                plan.ThreadPosts = plan.ThreadPosts.Take(Math.Max(0, maxPosts - 2)).ToList(); // -2 for first + last
+
+                _logger.LogInformation("Generated thread plan: {TotalCount} items, {Highlights} highlights, {Posts} follow-up posts",
+                    plan.TotalCount, plan.TopHighlights.Count, plan.ThreadPosts.Count);
+
+                return plan;
             }
-
-            var plan = System.Text.Json.JsonSerializer.Deserialize<ThreadPlan>(json, new System.Text.Json.JsonSerializerOptions
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                PropertyNameCaseInsensitive = true
-            });
-
-            if (plan == null || plan.TopHighlights == null || plan.ThreadPosts == null)
-            {
-                _logger.LogWarning("AI thread plan response was null or incomplete for {FeedType}: {Title}", feedType, releaseTitle);
+                _logger.LogWarning(ex,
+                    "Timed out generating AI thread plan for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries}). TimeoutSeconds={TimeoutSeconds}",
+                    feedType, releaseTitle, attempt, maxRetries, GetThreadPlanTimeoutSeconds());
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
                 return null;
             }
-
-            // Clamp to configured limits
-            plan.TopHighlights = plan.TopHighlights.Take(topHighlights).ToList();
-            plan.ThreadPosts = plan.ThreadPosts.Take(Math.Max(0, maxPosts - 2)).ToList(); // -2 for first + last
-
-            _logger.LogInformation("Generated thread plan: {TotalCount} items, {Highlights} highlights, {Posts} follow-up posts",
-                plan.TotalCount, plan.TopHighlights.Count, plan.ThreadPosts.Count);
-
-            return plan;
+            catch (Exception ex)
+            {
+                var errorCode = (ex as Azure.RequestFailedException)?.ErrorCode ?? "N/A";
+                var statusCode = (ex as Azure.RequestFailedException)?.Status.ToString() ?? "N/A";
+                _logger.LogError(ex,
+                    "Error generating AI thread plan for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries}). StatusCode={StatusCode}, ErrorCode={ErrorCode}, Message={ErrorMessage}",
+                    feedType, releaseTitle, attempt, maxRetries, statusCode, errorCode, ex.Message);
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+                return null;
+            }
         }
-        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning(ex,
-                "Timed out generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}",
-                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Error generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}",
-                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights);
-            return null;
-        }
+
+        return null;
     }
 
     private static int GetThreadPlanTimeoutSeconds()
@@ -735,11 +800,15 @@ Rules:
 
     private static string BuildThreadPlanPrompt(
         string releaseTitle, string releaseContent, string feedType,
-        int maxPostLength, int maxPosts, int topHighlights, int totalItemCount) =>
-        $@"Plan a {maxPosts}-post social media thread for this {feedType} release: {releaseTitle}
+        int maxPostLength, int maxPosts, int topHighlights, int totalItemCount)
+    {
+        // Preprocess: strip HTML, remove contributor noise, and cap size to avoid token limits
+        var cleaned = PrepareContentForAi(releaseContent);
+
+        return $@"Plan a {maxPosts}-post social media thread for this {feedType} release: {releaseTitle}
 
 Release Content:
-{releaseContent}
+{cleaned}
 
 Total items detected: {totalItemCount}
 Max post length: {maxPostLength} characters
@@ -752,6 +821,7 @@ Respond with JSON only. Example:
   ""topHighlights"": [""✨ New interactive setup flow"", ""⚡ Faster indexing"", ""🐛 Fixed auth edge cases""],
   ""threadPosts"": [""✨ Better file picker\n⚡ Reduced startup time\n🔒 Hardened token storage"", ""🐛 Fixed terminal rendering\n📖 Updated docs""]
 }}";
+    }
 }
 
 /// <summary>

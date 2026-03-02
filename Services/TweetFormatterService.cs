@@ -681,7 +681,7 @@ public partial class TweetFormatterService
     private static int GetMaxThreadPosts()
     {
         var value = Environment.GetEnvironmentVariable("THREAD_MAX_POSTS");
-        return int.TryParse(value, out var n) && n >= 2 ? n : 4;
+        return int.TryParse(value, out var n) && n >= 2 ? n : 6;
     }
 
     /// <summary>Reads THREAD_TOP_HIGHLIGHTS from environment (default 3, minimum 1).</summary>
@@ -937,7 +937,7 @@ public partial class TweetFormatterService
 
         // --- First post ---
         var highlightBlock = highlights.Count > 0 ? string.Join("\n", highlights) : string.Empty;
-        var leadIn = "See thread below 👇";
+        var leadIn = "🧵 See thread below 👇";
         string firstPost;
 
         if (string.IsNullOrEmpty(highlightBlock))
@@ -966,7 +966,37 @@ public partial class TweetFormatterService
         }
 
         // --- Last post: link + hashtag ---
-        posts.Add($"{link}\n\n{hashtag}");
+        var lastPostContent = $"{link}\n\n{hashtag}";
+
+        // Try to merge the last post into the previous follow-up post if there's room
+        if (posts.Count >= 2)
+        {
+            var prevIndex = posts.Count - 1;
+            var merged = $"{posts[prevIndex]}\n\n{lastPostContent}";
+            if (merged.Length <= maxPostLength)
+            {
+                posts[prevIndex] = merged;
+            }
+            else
+            {
+                posts.Add(lastPostContent);
+            }
+        }
+        else
+        {
+            posts.Add(lastPostContent);
+        }
+
+        // --- Add thread position indicators (🧵 1/N) ---
+        for (var i = 0; i < posts.Count; i++)
+        {
+            var indicator = $"🧵 {i + 1}/{posts.Count}";
+            var postWithIndicator = $"{posts[i]}\n\n{indicator}";
+            if (postWithIndicator.Length <= maxPostLength)
+            {
+                posts[i] = postWithIndicator;
+            }
+        }
 
         return posts;
     }
