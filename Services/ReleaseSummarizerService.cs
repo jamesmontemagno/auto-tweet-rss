@@ -722,9 +722,9 @@ Example output format (single feature from multiple related list items):
                     PropertyNameCaseInsensitive = true
                 });
 
-                if (plan == null || plan.TopHighlights == null || plan.ThreadPosts == null)
+                if (plan == null || plan.Items == null || plan.Items.Count == 0)
                 {
-                    _logger.LogWarning("AI thread plan response was null or incomplete for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries})",
+                    _logger.LogWarning("AI thread plan response was null or empty for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries})",
                         feedType, releaseTitle, attempt, maxRetries);
                     if (attempt < maxRetries)
                     {
@@ -734,12 +734,8 @@ Example output format (single feature from multiple related list items):
                     return null;
                 }
 
-                // Clamp to configured limits
-                plan.TopHighlights = plan.TopHighlights.Take(topHighlights).ToList();
-                plan.ThreadPosts = plan.ThreadPosts.Take(Math.Max(0, maxPosts - 2)).ToList(); // -2 for first + last
-
-                _logger.LogInformation("Generated thread plan: {TotalCount} items, {Highlights} highlights, {Posts} follow-up posts",
-                    plan.TotalCount, plan.TopHighlights.Count, plan.ThreadPosts.Count);
+                _logger.LogInformation("Generated thread plan: {TotalCount} total, {ItemCount} ranked items",
+                    plan.TotalCount, plan.Items.Count);
 
                 return plan;
             }
@@ -782,24 +778,20 @@ Example output format (single feature from multiple related list items):
             : DefaultThreadPlanTimeoutSeconds;
     }
 
-    private static string GetThreadPlanSystemPrompt() => @"You are an expert at analyzing software release notes and planning engaging social media threads.
+    private static string GetThreadPlanSystemPrompt() => @"You are an expert at analyzing software release notes for social media.
 
-Your task is to plan a thread (reply chain) for a release announcement. You MUST respond with valid JSON only — no prose, no code fences.
+Your task is to extract, rank, and format features from release notes. You MUST respond with valid JSON only — no prose, no code fences.
 
 The JSON must have exactly these fields:
-- ""totalCount"": integer, total number of distinct features/fixes in the release
-- ""topHighlights"": array of strings, the most exciting highlights (each starts with an emoji, 40-70 chars each)
-- ""threadPosts"": array of strings, follow-up post bodies (each post should USE MOST of the maxPostLength, grouped thematically)
+- ""totalCount"": integer, total number of distinct features/fixes/changes
+- ""items"": array of strings, ALL features ranked by importance/excitement (most exciting first)
 
 Rules:
+- Each item must start with an appropriate emoji (✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨)
+- Each item should be 40-70 characters — descriptive but concise
 - NEVER include user names, contributor names, or issue/PR numbers
-- Each highlight and thread post line must start with an emoji (✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨)
-- Keep each highlight descriptive but concise (40-70 chars)
-- Group related items into the same follow-up post
-- Each follow-up post should list 4-6 items, one per line, to fill the available space
-- AIM TO USE at least 80% of the maxPostLength for each follow-up post — pack in more detail or items
-- Add brief context or impact to each item (e.g., '✨ New interactive setup flow — easier onboarding for new users')
-- Do NOT leave follow-up posts half-empty when there are more items to include";
+- Deduplicate similar items
+- Focus on WHAT changed and WHY it matters to users";
 
     private static string BuildThreadPlanPrompt(
         string releaseTitle, string releaseContent, string feedType,
@@ -808,31 +800,26 @@ Rules:
         // Preprocess: strip HTML, remove contributor noise, and cap size to avoid token limits
         var cleaned = PrepareContentForAi(releaseContent);
 
-        return $@"Plan a {maxPosts}-post social media thread for this {feedType} release: {releaseTitle}
+        return $@"Extract and rank all features from this {feedType} release: {releaseTitle}
 
 Release Content:
 {cleaned}
 
 Total items detected: {totalItemCount}
-Max post length: {maxPostLength} characters
-Desired top highlights for first post: {topHighlights}
-Max follow-up posts (excluding first and last): {Math.Max(0, maxPosts - 2)}
 
-Respond with JSON only. Example:
+Return ALL items ranked by importance. Respond with JSON only. Example:
 {{
   ""totalCount"": 8,
-  ""topHighlights"": [""✨ New interactive setup flow"", ""⚡ Faster indexing"", ""🐛 Fixed auth edge cases""],
-  ""threadPosts"": [""✨ Better file picker\n⚡ Reduced startup time\n🔒 Hardened token storage"", ""🐛 Fixed terminal rendering\n📖 Updated docs""]
+  ""items"": [""✨ New interactive setup flow for easier onboarding"", ""⚡ 3x faster workspace indexing"", ""🐛 Fixed auth token refresh edge case"", ""🔒 Hardened credential storage"", ""📖 Updated getting started docs""]
 }}";
     }
 }
 
 /// <summary>
-/// Represents an AI-generated plan for a social media thread.
+/// Represents an AI-generated ranked list of features for thread assembly.
 /// </summary>
 public class ThreadPlan
 {
     public int TotalCount { get; set; }
-    public List<string> TopHighlights { get; set; } = [];
-    public List<string> ThreadPosts { get; set; } = [];
+    public List<string> Items { get; set; } = [];
 }

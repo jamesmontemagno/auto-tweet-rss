@@ -738,25 +738,25 @@ public partial class TweetFormatterService
     private IReadOnlyList<string> BuildReleaseThread(
         ReleaseEntry entry, ThreadPlan? plan, string header, int maxPostLength, string hashtag)
     {
-        IReadOnlyList<string> highlights;
-        IReadOnlyList<string> followUpGroups;
+        List<string> allItems;
         int totalCount;
 
-        if (plan != null && plan.TopHighlights.Count > 0)
+        if (plan != null && plan.Items.Count > 0)
         {
-            highlights = plan.TopHighlights;
-            followUpGroups = plan.ThreadPosts;
+            allItems = plan.Items;
             totalCount = plan.TotalCount;
         }
         else
         {
             // Deterministic fallback: extract features from HTML
-            var allFeatures = ExtractFeatureList(entry.Content);
-            var topN = GetTopHighlightsCount();
-            highlights = allFeatures.Take(topN).ToList();
-            followUpGroups = GroupFeatureLines(allFeatures.Skip(topN).ToList(), 4);
-            totalCount = allFeatures.Count;
+            allItems = ExtractFeatureList(entry.Content);
+            totalCount = allItems.Count;
         }
+
+        var topN = GetTopHighlightsCount();
+        var highlights = allItems.Take(topN).ToList();
+        var remaining = allItems.Skip(topN).ToList();
+        var followUpGroups = PackItemsIntoPosts(remaining, maxPostLength);
 
         return AssembleThread(header, highlights, followUpGroups, totalCount, entry.Link, hashtag, maxPostLength);
     }
@@ -805,25 +805,25 @@ public partial class TweetFormatterService
             }
         }
 
-        IReadOnlyList<string> highlights;
-        IReadOnlyList<string> followUpGroups;
+        List<string> allItems;
         int totalCount;
 
-        if (plan != null && plan.TopHighlights.Count > 0)
+        if (plan != null && plan.Items.Count > 0)
         {
-            highlights = plan.TopHighlights;
-            followUpGroups = plan.ThreadPosts;
+            allItems = plan.Items;
             totalCount = plan.TotalCount;
         }
         else
         {
             var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
-            var allFeatures = ExtractFeatureList(combinedContent);
-            var topN = GetTopHighlightsCount();
-            highlights = allFeatures.Take(topN).ToList();
-            followUpGroups = GroupFeatureLines(allFeatures.Skip(topN).ToList(), 4);
-            totalCount = allFeatures.Count;
+            allItems = ExtractFeatureList(combinedContent);
+            totalCount = allItems.Count;
         }
+
+        var topN = GetTopHighlightsCount();
+        var highlights = allItems.Take(topN).ToList();
+        var remaining = allItems.Skip(topN).ToList();
+        var followUpGroups = PackItemsIntoPosts(remaining, maxPostLength);
 
         var url = "https://github.com/github/copilot-cli/releases";
         return AssembleThread(header, highlights, followUpGroups, totalCount, url, Hashtag, maxPostLength);
@@ -1051,5 +1051,46 @@ public partial class TweetFormatterService
             groups.Add(string.Join("\n", lines.Skip(i).Take(linesPerGroup)));
         }
         return groups;
+    }
+
+    /// <summary>
+    /// Packs items into posts greedily, filling each post as close to
+    /// maxPostLength as possible before starting a new one.
+    /// Reserves space for thread indicator (~12 chars) appended later.
+    /// </summary>
+    private static IReadOnlyList<string> PackItemsIntoPosts(IList<string> items, int maxPostLength)
+    {
+        if (items.Count == 0) return [];
+
+        const int threadIndicatorReserve = 14; // "\n\n🧵 XX/XX"
+        var effectiveMax = maxPostLength - threadIndicatorReserve;
+        var posts = new List<string>();
+        var currentLines = new List<string>();
+        var currentLength = 0;
+
+        foreach (var item in items)
+        {
+            // +1 for the newline separator between lines
+            var addedLength = currentLines.Count > 0 ? item.Length + 1 : item.Length;
+
+            if (currentLength + addedLength > effectiveMax && currentLines.Count > 0)
+            {
+                // Current post is full, start a new one
+                posts.Add(string.Join("\n", currentLines));
+                currentLines = [];
+                currentLength = 0;
+                addedLength = item.Length;
+            }
+
+            currentLines.Add(item);
+            currentLength += addedLength;
+        }
+
+        if (currentLines.Count > 0)
+        {
+            posts.Add(string.Join("\n", currentLines));
+        }
+
+        return posts;
     }
 }
