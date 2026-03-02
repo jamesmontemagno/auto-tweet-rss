@@ -12,7 +12,7 @@ namespace AutoTweetRss.Services;
 /// </summary>
 public class ReleaseSummarizerService
 {
-    private const int DefaultThreadPlanTimeoutSeconds = 240;
+    private const int DefaultThreadPlanTimeoutSeconds = 60;
     private readonly IChatClient _chatClient;
     private readonly ILogger<ReleaseSummarizerService> _logger;
     
@@ -665,7 +665,7 @@ Example output format (single feature from multiple related list items):
     }
 
     /// <summary>
-    /// Uses AI to generate a structured thread plan for a release or summary.
+    /// Uses AI to generate a ranked list of features for thread assembly.
     /// Returns null if AI is unavailable or the response cannot be parsed.
     /// </summary>
     public async Task<ThreadPlan?> PlanThreadAsync(
@@ -679,13 +679,30 @@ Example output format (single feature from multiple related list items):
     {
         const int maxRetries = 3;
         var totalItemCount = CountItemsInRelease(releaseContent, feedType);
-        var prompt = BuildThreadPlanPrompt(releaseTitle, releaseContent, feedType,
-            maxPostLength, maxPosts, topHighlights, totalItemCount);
+        var cleaned = PrepareContentForAi(releaseContent);
+
+        var prompt = $@"Extract and rank all features from this {feedType} release: {releaseTitle}
+
+Release Content:
+{cleaned}
+
+Total items detected: {totalItemCount}
+
+Return ALL items ranked by importance. Respond with JSON only. Example:
+{{
+  ""totalCount"": 8,
+  ""items"": [""✨ New interactive setup flow for easier onboarding"", ""⚡ 3x faster workspace indexing"", ""🐛 Fixed auth token refresh edge case"", ""🔒 Hardened credential storage"", ""📖 Updated getting started docs""]
+}}";
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
             new(ChatRole.System, GetThreadPlanSystemPrompt()),
             new(ChatRole.User, prompt)
+        };
+
+        var options = new ChatOptions
+        {
+            ResponseFormat = ChatResponseFormat.Json
         };
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
@@ -698,7 +715,7 @@ Example output format (single feature from multiple related list items):
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
 
-                var response = await _chatClient.GetResponseAsync(messages, cancellationToken: timeoutCts.Token);
+                var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
                 var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
 
                 // Strip any markdown code fences
@@ -719,8 +736,8 @@ Example output format (single feature from multiple related list items):
 
                 if (plan == null || plan.Items == null || plan.Items.Count == 0)
                 {
-                    _logger.LogWarning("AI thread plan response was null or empty for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries})",
-                        feedType, releaseTitle, attempt, maxRetries);
+                    _logger.LogWarning("AI thread plan response was null or empty for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries}). Response: {Response}",
+                        feedType, releaseTitle, attempt, maxRetries, json.Length > 200 ? json[..200] : json);
                     if (attempt < maxRetries)
                     {
                         await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
@@ -729,8 +746,14 @@ Example output format (single feature from multiple related list items):
                     return null;
                 }
 
-                _logger.LogInformation("Generated thread plan: {TotalCount} total, {ItemCount} ranked items",
-                    plan.TotalCount, plan.Items.Count);
+                // Use AI's totalCount if provided, otherwise fall back to detected count
+                if (plan.TotalCount <= 0)
+                {
+                    plan.TotalCount = totalItemCount > 0 ? totalItemCount : plan.Items.Count;
+                }
+
+                _logger.LogInformation("Generated thread plan: {TotalCount} total, {ItemCount} ranked items for {FeedType}: {Title}",
+                    plan.TotalCount, plan.Items.Count, feedType, releaseTitle);
 
                 return plan;
             }
@@ -787,27 +810,6 @@ Rules:
 - NEVER include user names, contributor names, or issue/PR numbers
 - Deduplicate similar items
 - Focus on WHAT changed and WHY it matters to users";
-
-    private static string BuildThreadPlanPrompt(
-        string releaseTitle, string releaseContent, string feedType,
-        int maxPostLength, int maxPosts, int topHighlights, int totalItemCount)
-    {
-        // Preprocess: strip HTML, remove contributor noise, and cap size to avoid token limits
-        var cleaned = PrepareContentForAi(releaseContent);
-
-        return $@"Extract and rank all features from this {feedType} release: {releaseTitle}
-
-Release Content:
-{cleaned}
-
-Total items detected: {totalItemCount}
-
-Return ALL items ranked by importance. Respond with JSON only. Example:
-{{
-  ""totalCount"": 8,
-  ""items"": [""✨ New interactive setup flow for easier onboarding"", ""⚡ 3x faster workspace indexing"", ""🐛 Fixed auth token refresh edge case"", ""🔒 Hardened credential storage"", ""📖 Updated getting started docs""]
-}}";
-    }
 }
 
 /// <summary>
