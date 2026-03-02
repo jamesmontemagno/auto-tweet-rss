@@ -118,7 +118,7 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     
     "AI_ENDPOINT": "<your-azure-openai-endpoint>",
     "AI_API_KEY": "<your-azure-openai-api-key>",
-    "AI_MODEL": "gpt-5-nano",
+    "AI_MODEL": "gpt-4o-mini",
     "ENABLE_AI_SUMMARIES": "false",
     "AI_THREAD_PLAN_TIMEOUT_SECONDS": "240"
   }
@@ -146,7 +146,7 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `RSS_FEED_URL` | Atom feed URL to monitor | No (default: Copilot CLI releases) |
 | `AI_ENDPOINT` | Azure OpenAI endpoint URL (e.g., `https://your-resource.openai.azure.com/`) | No (if not set, falls back to manual extraction) |
 | `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
-| `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-5-nano`) |
+| `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-4o-mini`) |
 | `ENABLE_AI_SUMMARIES` | Enable AI-powered thread planning for timer functions | No (default: `false`) |
 | `AI_THREAD_PLAN_TIMEOUT_SECONDS` | Timeout (seconds) for AI thread-plan requests before fallback | No (default: `240`) |
 | `THREAD_MAX_POSTS` | Maximum number of posts per thread (including first and last) | No (default: `6`, minimum: `2`) |
@@ -181,12 +181,12 @@ To enable AI-powered summaries:
 
 1. Go to [Azure Portal](https://portal.azure.com/)
 2. Create an **Azure OpenAI** resource
-3. Deploy a model (recommended: `gpt-4o-nano` for cost-effectiveness, or `gpt-4o`, `gpt-4o-mini`)
+3. Deploy a model (recommended: `gpt-4o-mini` for cost-effectiveness, or `gpt-4o`)
 4. Get your endpoint and API key from the resource's "Keys and Endpoint" section
 5. Configure the environment variables:
    - `AI_ENDPOINT`: Your Azure OpenAI endpoint URL
    - `AI_API_KEY`: Your Azure OpenAI API key
-   - `AI_MODEL`: Your deployment name (e.g., `gpt-4o-nano`)
+   - `AI_MODEL`: Your deployment name (e.g., `gpt-4o-mini`)
    - `AI_THREAD_PLAN_TIMEOUT_SECONDS`: Optional timeout for AI thread-plan requests (default: `240`)
 
 **Note**: If AI configuration is not provided, the system will fall back to manual HTML parsing and extraction of release notes.

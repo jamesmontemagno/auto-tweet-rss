@@ -788,15 +788,18 @@ Your task is to plan a thread (reply chain) for a release announcement. You MUST
 
 The JSON must have exactly these fields:
 - ""totalCount"": integer, total number of distinct features/fixes in the release
-- ""topHighlights"": array of strings, the most exciting highlights (each starts with an emoji, max 60 chars each)
-- ""threadPosts"": array of strings, follow-up post bodies (each post ≤ the maxPostLength, grouped thematically)
+- ""topHighlights"": array of strings, the most exciting highlights (each starts with an emoji, 40-70 chars each)
+- ""threadPosts"": array of strings, follow-up post bodies (each post should USE MOST of the maxPostLength, grouped thematically)
 
 Rules:
 - NEVER include user names, contributor names, or issue/PR numbers
 - Each highlight and thread post line must start with an emoji (✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨)
-- Keep each highlight concise (25-60 chars)
+- Keep each highlight descriptive but concise (40-70 chars)
 - Group related items into the same follow-up post
-- Each follow-up post should list 3-5 items, one per line";
+- Each follow-up post should list 4-6 items, one per line, to fill the available space
+- AIM TO USE at least 80% of the maxPostLength for each follow-up post — pack in more detail or items
+- Add brief context or impact to each item (e.g., '✨ New interactive setup flow — easier onboarding for new users')
+- Do NOT leave follow-up posts half-empty when there are more items to include";
 
     private static string BuildThreadPlanPrompt(
         string releaseTitle, string releaseContent, string feedType,
