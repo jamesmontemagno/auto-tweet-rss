@@ -688,11 +688,6 @@ Example output format (single feature from multiple related list items):
             new(ChatRole.User, prompt)
         };
 
-        var options = new ChatOptions
-        {
-            ResponseFormat = ChatResponseFormat.Json
-        };
-
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
@@ -703,7 +698,7 @@ Example output format (single feature from multiple related list items):
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
 
-                var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
+                var response = await _chatClient.GetResponseAsync(messages, cancellationToken: timeoutCts.Token);
                 var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
 
                 // Strip any markdown code fences
