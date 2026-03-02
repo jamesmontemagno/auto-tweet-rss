@@ -12,6 +12,7 @@ namespace AutoTweetRss.Services;
 /// </summary>
 public class ReleaseSummarizerService
 {
+    private const int DefaultThreadPlanTimeoutSeconds = 120;
     private readonly IChatClient _chatClient;
     private readonly ILogger<ReleaseSummarizerService> _logger;
     
@@ -83,7 +84,9 @@ public class ReleaseSummarizerService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating AI summary for {FeedType} release: {Title}", feedType, releaseTitle);
+            _logger.LogError(ex,
+                "Error generating AI summary for {FeedType} release: {Title}. MaxLength={MaxLength}, TotalItems={TotalItems}",
+                feedType, releaseTitle, maxLength, totalItemCount);
             throw;
         }
     }
@@ -647,7 +650,10 @@ Example output format (single feature from multiple related list items):
 
             _logger.LogInformation("Requesting AI thread plan for {FeedType} release: {Title} ({TotalItems} items)", feedType, releaseTitle, totalItemCount);
 
-            var response = await _chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
+
+            var response = await _chatClient.GetResponseAsync(messages, cancellationToken: timeoutCts.Token);
             var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
 
             // Strip any markdown code fences
@@ -681,11 +687,28 @@ Example output format (single feature from multiple related list items):
 
             return plan;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogError(ex, "Error generating AI thread plan for {FeedType}: {Title}", feedType, releaseTitle);
+            _logger.LogWarning(ex,
+                "Timed out generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}, TotalItems={TotalItems}",
+                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights, totalItemCount);
             return null;
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Error generating AI thread plan for {FeedType}: {Title}. TimeoutSeconds={TimeoutSeconds}, MaxPostLength={MaxPostLength}, MaxPosts={MaxPosts}, TopHighlights={TopHighlights}, TotalItems={TotalItems}",
+                feedType, releaseTitle, GetThreadPlanTimeoutSeconds(), maxPostLength, maxPosts, topHighlights, totalItemCount);
+            return null;
+        }
+    }
+
+    private static int GetThreadPlanTimeoutSeconds()
+    {
+        var configured = Environment.GetEnvironmentVariable("AI_THREAD_PLAN_TIMEOUT_SECONDS");
+        return int.TryParse(configured, out var seconds) && seconds > 0
+            ? seconds
+            : DefaultThreadPlanTimeoutSeconds;
     }
 
     private static string GetThreadPlanSystemPrompt() => @"You are an expert at analyzing software release notes and planning engaging social media threads.
