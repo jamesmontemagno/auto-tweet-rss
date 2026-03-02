@@ -20,42 +20,62 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 - Monitors both GitHub Copilot CLI and Copilot SDK Atom feeds
 - Polls feeds every 15 minutes
 - Filters out pre-release versions and submodule releases
-- **AI-powered summaries**: Uses Microsoft.Extensions.AI with Azure OpenAI to generate concise, emoji-enhanced summaries of release notes
-- Formats tweets with emoji-enhanced bullet points for features
-- Posts to Twitter/X using OAuth 1.0a authentication
-- Cross-posts VS Code automation to Bluesky (optional; uses App Password auth)
-- Tracks state in Azure Blob Storage to prevent duplicate tweets (separate state for CLI and SDK)
-- Respects Twitter's 280 character limit with smart truncation
+- **AI-powered threaded posts**: Uses Microsoft.Extensions.AI with Azure OpenAI to generate concise, emoji-enhanced threads with top highlights in the first post, grouped follow-up posts, and the release link in the final post
+- **Deterministic fallback**: When AI is unavailable, threads are built from HTML-parsed release notes so posting always succeeds
+- Posts to Twitter/X using OAuth 1.0a authentication (with reply-chain thread support)
+- Cross-posts VS Code automation to Bluesky (with AT Protocol reply thread support)
+- Tracks state in Azure Blob Storage to prevent duplicate posts (separate state for CLI and SDK)
+- Respects platform character limits (280 for X, 300 for Bluesky) per post in the thread
 
-## Tweet Formats
+## Thread Formats
 
-### Copilot CLI
+Each stream now publishes a **thread** (reply chain) instead of a single post. AI is used to rank highlights and group follow-up posts; a deterministic fallback ensures posting succeeds when AI is unavailable.
+
+### Thread Structure (all streams)
 
 ```
-🚀 Copilot CLI v0.0.388 released!
+Post 1 (first post):
+🚀 <Release title>
+<N> new additions 🧵
 
-✨ Add /review command for code reviews
-⚡ Improved response time
-🐛 Fixed memory leak
+✨ Top highlight 1
+⚡ Top highlight 2
+🐛 Top highlight 3
 
-https://github.com/github/copilot-cli/releases/tag/v0.0.388
+See thread below 👇
+
+Post 2..N (follow-up posts, per-group highlights):
+✨ Feature 4
+✨ Feature 5
+⚡ Feature 6
+
+Post last:
+https://github.com/.../releases/tag/v1.2.3
 
 #GitHubCopilotCLI
 ```
 
+### Copilot CLI
+
+- First post: release header, addition count, top 3 highlights, thread lead-in
+- Follow-up posts: remaining grouped highlights
+- Last post: release URL + `#GitHubCopilotCLI`
+
 ### Copilot SDK
 
-```
-🚀 Copilot SDK v0.1.16 released!
+- Same structure as CLI, with `#GitHubCopilotSDK`
 
-✨ Adding FAQ section to the README
-⚡ Make the .NET library NativeAOT compatible
-🐛 Fix code formatting
+### VS Code Insiders Daily
 
-https://github.com/github/copilot-sdk/releases/tag/v0.1.16
+- First post: date header, feature count, top highlights
+- Follow-up posts: remaining feature groups
+- Last post: Insiders update URL + `#vscode`
 
-#GitHubCopilotSDK
-```
+### VS Code Insiders Weekly Recap
+
+- First post: date range header, total feature count, top highlights
+- Follow-up posts: remaining feature groups
+- Last post: release notes URL + `#vscode`
 
 ## Prerequisites
 
@@ -126,7 +146,9 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AI_ENDPOINT` | Azure OpenAI endpoint URL (e.g., `https://your-resource.openai.azure.com/`) | No (if not set, falls back to manual extraction) |
 | `AI_API_KEY` | Azure OpenAI API key | No (if not set, falls back to manual extraction) |
 | `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-5-nano`) |
-| `ENABLE_AI_SUMMARIES` | Enable AI-powered summaries for timer functions | No (default: `false`) |
+| `ENABLE_AI_SUMMARIES` | Enable AI-powered thread planning for timer functions | No (default: `false`) |
+| `THREAD_MAX_POSTS` | Maximum number of posts per thread (including first and last) | No (default: `4`, minimum: `2`) |
+| `THREAD_TOP_HIGHLIGHTS` | Number of top highlights shown in the first post | No (default: `3`, minimum: `1`) |
 
 ### Bluesky App Password
 
@@ -182,25 +204,39 @@ To enable AI-powered summaries:
    
    Or press F5 in VS Code with the Azure Functions extension.
 
-4. **AI Summaries**: 
-   - Timer functions always run every 15 minutes (automatic)
-   - By default, AI summaries are **disabled** for timer functions (`ENABLE_AI_SUMMARIES=false`)
-   - When disabled, timer functions use classic HTML parsing
-   - To enable AI summaries for timer functions, set `ENABLE_AI_SUMMARIES=true` and configure AI endpoint/key
+4. **Thread behavior**: 
+   - All streams now publish **threads** by default (first post + follow-ups + last post with link).
+   - Thread structure is always applied; AI improves the ranking/grouping when configured.
+   - Control thread size with `THREAD_MAX_POSTS` (default: `4`) and `THREAD_TOP_HIGHLIGHTS` (default: `3`).
 
-5. **Testing the AI summary** without tweeting:
+5. **AI Thread Planning**: 
+   - Timer functions always run every 15 minutes (automatic)
+   - By default, AI thread planning is **disabled** for timer functions (`ENABLE_AI_SUMMARIES=false`)
+   - When disabled, timer functions use deterministic HTML extraction for thread content
+   - To enable AI thread planning for timer functions, set `ENABLE_AI_SUMMARIES=true` and configure AI endpoint/key
+
+6. **Testing threads** without posting:
    
-   Use the test endpoint to preview AI-generated summaries (always uses AI if configured):
+   Use the test endpoints to preview threads (always uses AI if configured):
    
    ```bash
-   # Test CLI release summary
+   # Test CLI release thread
    curl http://localhost:7071/api/test-summary/cli
    
-   # Test SDK release summary
+   # Test SDK release thread
    curl http://localhost:7071/api/test-summary/sdk
+   
+   # Test VS Code daily thread (today)
+   curl http://localhost:7071/api/test-summary/vscode
+   
+   # Test CLI weekly recap thread
+   curl http://localhost:7071/api/test-weekly-recap
+   
+   # Test VS Code weekly recap thread
+   curl http://localhost:7071/api/test-weekly-recap/vscode
    ```
    
-   This fetches the latest release and generates the tweet format without posting to Twitter.
+   Responses show numbered posts like `[Post 1/3]`, `[Post 2/3]`, `[Post 3/3]` for easy validation.
 
 ## Functions and Endpoints
 
@@ -227,27 +263,34 @@ curl "http://localhost:7071/api/cli-summary?version=v1.7.0&maxLength=500&format=
 
 **TestSummary**
 
-Preview a formatted tweet for the latest CLI or SDK release (always uses AI when configured).
+Preview a formatted thread for the latest CLI or SDK release (always uses AI when configured).
 
-- Route: `GET /api/test-summary/{cli|sdk}`
+- Route: `GET /api/test-summary/{cli|sdk|vscode}`
+- For VS Code: optional `?date=yyyy-MM-dd` query parameter
 
 ```bash
 curl "http://localhost:7071/api/test-summary/cli"
 curl "http://localhost:7071/api/test-summary/sdk"
+curl "http://localhost:7071/api/test-summary/vscode?date=2026-02-01"
 ```
+
+Returns numbered thread preview (e.g., `[Post 1/3]`, `[Post 2/3]`, `[Post 3/3]`) without posting.
 
 **TestWeeklyRecap**
 
-Preview the weekly CLI recap tweet for a given week window (PT).
+Preview the weekly thread for a given week window (PT).
 
-- Route: `GET /api/test-weekly-recap`
+- Route: `GET /api/test-weekly-recap/{cli|vscode}`
 - Params:
    - `date` (optional, format `yyyy-MM-dd`, sets the week end date at 10:00 AM PT)
 
 ```bash
 curl "http://localhost:7071/api/test-weekly-recap"
 curl "http://localhost:7071/api/test-weekly-recap?date=2026-02-01"
+curl "http://localhost:7071/api/test-weekly-recap/vscode?date=2026-02-01"
 ```
+
+Returns numbered thread preview for validation.
 
 **VSCodeInsiders**
 
@@ -348,36 +391,41 @@ auto-tweet-rss/
 
 ## How It Works
 
+### Thread Generation (all streams)
+
+Each stream now generates and posts a **thread** (reply chain):
+
+1. **First post**: Release/update header, feature/addition count, top N highlights (emoji-prefixed), and a "See thread below 👇" lead-in. Post is capped at the platform limit (280 chars for X, 300 for Bluesky).
+2. **Follow-up posts**: Remaining highlights grouped into posts of ≤4 items each.
+3. **Last post**: The release/update URL and the stream's hashtag.
+
+**AI path** (when `ENABLE_AI_SUMMARIES=true` and AI endpoint configured): Azure OpenAI ranks and groups highlights into `topHighlights` (first post) and `threadPosts` (follow-up posts) via a structured JSON response from `PlanThreadAsync`.
+
+**Deterministic fallback** (no AI): HTML list items are extracted, the first `THREAD_TOP_HIGHLIGHTS` become the first-post highlights, and the remainder are grouped into follow-up posts automatically.
+
 ### ReleaseNotifier Function (Copilot CLI)
 
 1. **Timer Trigger**: Runs every 15 minutes (`0 */15 * * * *`)
 2. **Fetch Feed**: Downloads and parses the CLI Atom feed from https://github.com/github/copilot-cli/releases.atom
 3. **Filter**: Removes entries with pre-release patterns (`-0`, `-1`, etc.) or "Pre-release" in content
 4. **Check State**: Compares against last processed entry ID stored in blob storage (`last-processed-id.txt`)
-5. **AI Summary** (if `ENABLE_AI_SUMMARIES=true`): Sends release content to Azure OpenAI for intelligent summarization with emojis, otherwise uses classic HTML parsing
-6. **Format**: Creates tweet with AI-generated summary or manual extraction, URL, and hashtag `#GitHubCopilotCLI`
-7. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
+5. **Thread Plan** (if `ENABLE_AI_SUMMARIES=true`): Calls Azure OpenAI for AI-generated thread plan; falls back to HTML extraction
+6. **Format**: Builds a thread: first post with top highlights, follow-up posts with grouped features, last post with URL + `#GitHubCopilotCLI`
+7. **Post**: Posts each tweet in sequence as a reply chain via Twitter API v2
 8. **Update State**: Saves the processed entry ID to prevent duplicates
 
 ### SdkReleaseNotifier Function (Copilot SDK)
 
-1. **Timer Trigger**: Runs every 15 minutes (`0 */15 * * * *`)
-2. **Fetch Feed**: Downloads and parses the SDK Atom feed from https://github.com/github/copilot-sdk/releases.atom
-3. **Filter**: Removes entries with preview releases (`-preview.X`) and Go submodule releases (`go/vX.X.X`)
-4. **Check State**: Compares against last processed entry ID stored in blob storage (`sdk-last-processed-id.txt`)
-5. **AI Summary** (if `ENABLE_AI_SUMMARIES=true`): Sends release content to Azure OpenAI for intelligent summarization with emojis, otherwise uses classic HTML parsing
-6. **Format**: Creates tweet with AI-generated summary or manual extraction, and hashtag `#GitHubCopilotSDK`
-7. **Post**: Sends to Twitter API v2 with OAuth 1.0a signature
-8. **Update State**: Saves the processed entry ID to prevent duplicates
+Same as CLI but targets https://github.com/github/copilot-sdk/releases.atom, uses `sdk` feed type for AI, and appends `#GitHubCopilotSDK`.
 
 ### TestSummary Function (HTTP Endpoint)
 
-1. **HTTP Request**: GET `/api/test-summary/{cli|sdk}`
-2. **Fetch Feed**: Downloads and parses the appropriate Atom feed
+1. **HTTP Request**: GET `/api/test-summary/{cli|sdk|vscode}`
+2. **Fetch Feed**: Downloads and parses the appropriate Atom feed (or VS Code notes)
 3. **Get Latest**: Retrieves the most recent stable release
-4. **AI Summary** (always enabled): Uses Azure OpenAI to generate summary regardless of `ENABLE_AI_SUMMARIES` setting
-5. **Format**: Creates tweet format with AI-generated summary
-6. **Return**: Returns formatted tweet preview without posting to Twitter
+4. **Thread Plan** (always enabled for test): Uses Azure OpenAI to generate thread plan
+5. **Format**: Builds thread format
+6. **Return**: Returns numbered thread preview (e.g., `[Post 1/3]`) without posting
 
 ## License
 

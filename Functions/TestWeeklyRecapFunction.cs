@@ -81,7 +81,7 @@ public class TestWeeklyRecapFunction
 
             var improvementCount = weeklyEntries.Sum(e => CountImprovements(e.Content));
 
-            var tweet = await _tweetFormatterService.FormatWeeklyCliRecapTweetAsync(
+            var thread = await _tweetFormatterService.FormatWeeklyCliRecapThreadAsync(
                 weeklyEntries,
                 weekStartPacific,
                 weekEndPacific,
@@ -94,9 +94,17 @@ public class TestWeeklyRecapFunction
             var output = $"Weekly window (PT): {weekStartPacific:yyyy-MM-dd} to {weekEndPacific:yyyy-MM-dd}\n";
             output += $"Releases: {weeklyEntries.Count}\n";
             output += $"Improvements: {improvementCount}\n";
-            output += $"\nFormatted Tweet ({tweet.Length} chars):\n";
+            output += $"\nThread Preview ({thread.Count} posts):\n";
             output += "═══════════════════════════════════════\n";
-            output += tweet;
+            for (var i = 0; i < thread.Count; i++)
+            {
+                output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
+                output += thread[i];
+                if (i < thread.Count - 1)
+                {
+                    output += "\n───────────────────────────────────────\n";
+                }
+            }
 
             await response.WriteStringAsync(output);
             return response;
@@ -199,7 +207,7 @@ public class TestWeeklyRecapFunction
                 isThisWeek: true);
         }
 
-        var tweet = await _tweetFormatterService.FormatVSCodeWeeklyRecapForXAsync(
+        var thread = await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForXAsync(
             featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
 
         response.StatusCode = HttpStatusCode.OK;
@@ -208,9 +216,17 @@ public class TestWeeklyRecapFunction
         var output = $"Weekly window (PT): {weekStartDate:yyyy-MM-dd} to {weekEndDate:yyyy-MM-dd}\n";
         output += $"Features: {notes.Features.Count}\n";
         output += $"Source: {notes.VersionUrl}\n\n";
-        output += $"Formatted Tweet ({tweet.Length} chars):\n";
+        output += $"Thread Preview ({thread.Count} posts):\n";
         output += "═══════════════════════════════════════\n";
-        output += tweet;
+        for (var i = 0; i < thread.Count; i++)
+        {
+            output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
+            output += thread[i];
+            if (i < thread.Count - 1)
+            {
+                output += "\n───────────────────────────────────────\n";
+            }
+        }
 
         await response.WriteStringAsync(output);
         return response;

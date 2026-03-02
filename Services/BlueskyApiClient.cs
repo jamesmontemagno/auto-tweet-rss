@@ -37,10 +37,21 @@ public partial class BlueskyApiClient : ISocialMediaClient
 
     public async Task<bool> PostAsync(string text)
     {
+        return await PostAndGetRefAsync(text) != null;
+    }
+
+    /// <summary>
+    /// Posts to Bluesky and returns the (URI, CID) pair needed for threading, or null on failure.
+    /// </summary>
+    private async Task<(string Uri, string Cid)?> PostAndGetRefAsync(
+        string text,
+        BlueskyReplyRef? reply = null,
+        BlueskySession? existingSession = null)
+    {
         if (!IsConfigured)
         {
             _logger.LogWarning("Bluesky credentials not configured. Skipping post.");
-            return false;
+            return null;
         }
 
         try
@@ -48,19 +59,18 @@ public partial class BlueskyApiClient : ISocialMediaClient
             _logger.LogInformation("Posting to Bluesky: {PostPreview}...",
                 text.Length > 50 ? text[..50] : text);
 
-            // Authenticate — get a session token
-            var session = await CreateSessionAsync();
+            var session = existingSession ?? await CreateSessionAsync();
             if (session is null)
-                return false;
+                return null;
 
-            // Build the post record
             var facets = ExtractUrlFacets(text);
             var record = new BlueskyPostRecord
             {
                 Type = "app.bsky.feed.post",
                 Text = text,
                 CreatedAt = DateTime.UtcNow.ToString("o"),
-                Facets = facets.Count > 0 ? facets : null
+                Facets = facets.Count > 0 ? facets : null,
+                Reply = reply
             };
 
             var createRecordRequest = new BlueskyCreateRecordRequest
@@ -82,20 +92,92 @@ public partial class BlueskyApiClient : ISocialMediaClient
             {
                 var result = JsonSerializer.Deserialize<BlueskyCreateRecordResponse>(responseContent, JsonOptions);
                 _logger.LogInformation("Bluesky post created successfully. URI: {Uri}", result?.Uri);
-                return true;
+                if (result?.Uri != null && result.Cid != null)
+                {
+                    return (result.Uri, result.Cid);
+                }
+                return null;
             }
             else
             {
                 _logger.LogError("Failed to post to Bluesky. Status: {StatusCode}, Response: {Response}",
                     response.StatusCode, responseContent);
-                return false;
+                return null;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error posting to Bluesky");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Posts multiple records as a reply chain (thread) on Bluesky.
+    /// </summary>
+    public async Task<bool> PostThreadAsync(IReadOnlyList<string> posts)
+    {
+        if (posts == null || posts.Count == 0)
+        {
             return false;
         }
+
+        if (posts.Count == 1)
+        {
+            return await PostAsync(posts[0]);
+        }
+
+        if (!IsConfigured)
+        {
+            _logger.LogWarning("Bluesky credentials not configured. Skipping thread.");
+            return false;
+        }
+
+        // Create a single session for all posts in the thread
+        var session = await CreateSessionAsync();
+        if (session is null)
+        {
+            return false;
+        }
+
+        var allSucceeded = true;
+        (string Uri, string Cid)? rootRef = null;
+        (string Uri, string Cid)? parentRef = null;
+
+        for (var i = 0; i < posts.Count; i++)
+        {
+            BlueskyReplyRef? replyRef = null;
+            if (rootRef != null && parentRef != null)
+            {
+                replyRef = new BlueskyReplyRef
+                {
+                    Root = new BlueskyStrongRef { Uri = rootRef.Value.Uri, Cid = rootRef.Value.Cid },
+                    Parent = new BlueskyStrongRef { Uri = parentRef.Value.Uri, Cid = parentRef.Value.Cid }
+                };
+            }
+
+            var result = await PostAndGetRefAsync(posts[i], replyRef, session);
+            if (result == null)
+            {
+                _logger.LogWarning("Thread post {Index}/{Total} failed. Stopping thread.", i + 1, posts.Count);
+                allSucceeded = false;
+                break;
+            }
+
+            if (rootRef == null)
+            {
+                rootRef = result;
+            }
+            parentRef = result;
+
+            // Small delay between thread posts
+            if (i < posts.Count - 1)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+        }
+
+        return allSucceeded;
     }
 
     private async Task<BlueskySession?> CreateSessionAsync()
@@ -141,7 +223,6 @@ public partial class BlueskyApiClient : ISocialMediaClient
     private static List<BlueskyFacet> ExtractUrlFacets(string text)
     {
         var facets = new List<BlueskyFacet>();
-        var utf8Bytes = System.Text.Encoding.UTF8.GetBytes(text);
 
         foreach (Match match in UrlRegex().Matches(text))
         {
@@ -232,6 +313,27 @@ public class BlueskyPostRecord
 
     [JsonPropertyName("facets")]
     public List<BlueskyFacet>? Facets { get; set; }
+
+    [JsonPropertyName("reply")]
+    public BlueskyReplyRef? Reply { get; set; }
+}
+
+public class BlueskyReplyRef
+{
+    [JsonPropertyName("root")]
+    public required BlueskyStrongRef Root { get; set; }
+
+    [JsonPropertyName("parent")]
+    public required BlueskyStrongRef Parent { get; set; }
+}
+
+public class BlueskyStrongRef
+{
+    [JsonPropertyName("uri")]
+    public required string Uri { get; set; }
+
+    [JsonPropertyName("cid")]
+    public required string Cid { get; set; }
 }
 
 public class BlueskyFacet
@@ -271,3 +373,4 @@ public class BlueskyCreateRecordResponse
 }
 
 #endregion
+

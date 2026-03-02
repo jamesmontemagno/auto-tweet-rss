@@ -24,6 +24,9 @@
     "AI_ENDPOINT": "",
     "AI_API_KEY": "",
     "AI_MODEL": "gpt-5-nano",
-    "ENABLE_AI_SUMMARIES": "false"
+    "ENABLE_AI_SUMMARIES": "false",
+
+    "THREAD_MAX_POSTS": "4",
+    "THREAD_TOP_HIGHLIGHTS": "3"
   }
 }

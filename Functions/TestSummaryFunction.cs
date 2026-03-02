@@ -85,27 +85,35 @@ public class TestSummaryFunction
             
             _logger.LogInformation("Processing release: {Title}", latestEntry.Title);
 
-            // Generate the tweet (always use AI for test endpoint)
-            string tweet;
+            // Generate the thread (always use AI for test endpoint)
+            IReadOnlyList<string> thread;
             if (isSdkFeed)
             {
-                tweet = await _tweetFormatterService.FormatSdkTweetAsync(latestEntry, useAi: true);
+                thread = await _tweetFormatterService.FormatSdkThreadForXAsync(latestEntry, useAi: true);
             }
             else
             {
-                tweet = await _tweetFormatterService.FormatTweetAsync(latestEntry, useAi: true);
+                thread = await _tweetFormatterService.FormatCliThreadForXAsync(latestEntry, useAi: true);
             }
 
-            // Return the formatted tweet
+            // Return the formatted thread
             response.StatusCode = HttpStatusCode.OK;
             response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
             
             var output = $"Latest Release: {latestEntry.Title}\n";
             output += $"Updated: {latestEntry.Updated:yyyy-MM-dd HH:mm:ss}\n";
             output += $"Link: {latestEntry.Link}\n\n";
-            output += $"Formatted Tweet ({tweet.Length} chars):\n";
+            output += $"Thread Preview ({thread.Count} posts):\n";
             output += "═══════════════════════════════════════\n";
-            output += tweet;
+            for (var i = 0; i < thread.Count; i++)
+            {
+                output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
+                output += thread[i];
+                if (i < thread.Count - 1)
+                {
+                    output += "\n───────────────────────────────────────\n";
+                }
+            }
             
             await response.WriteStringAsync(output);
             
@@ -146,11 +154,11 @@ public class TestSummaryFunction
 
         var summary = await _vsCodeReleaseNotesService.GenerateSummaryAsync(
             notes,
-            maxLength: 220,
+            maxLength: 800,
             format: $"test-daily-{targetDate:yyyyMMdd}",
             forceRefresh: true);
 
-        var tweet = _tweetFormatterService.FormatVSCodeChangelogTweet(summary, targetDate, targetDate, notes.WebsiteUrl);
+        var thread = _tweetFormatterService.FormatVSCodeChangelogThreadForX(summary, notes.Features.Count, targetDate, targetDate, notes.WebsiteUrl);
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
@@ -158,9 +166,17 @@ public class TestSummaryFunction
         var output = $"VS Code Insiders: {targetDate:yyyy-MM-dd}\n";
         output += $"Features: {notes.Features.Count}\n";
         output += $"Source: {notes.VersionUrl}\n\n";
-        output += $"Formatted Tweet ({tweet.Length} chars):\n";
+        output += $"Thread Preview ({thread.Count} posts):\n";
         output += "═══════════════════════════════════════\n";
-        output += tweet;
+        for (var i = 0; i < thread.Count; i++)
+        {
+            output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
+            output += thread[i];
+            if (i < thread.Count - 1)
+            {
+                output += "\n───────────────────────────────────────\n";
+            }
+        }
 
         await response.WriteStringAsync(output);
         return response;

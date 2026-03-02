@@ -672,4 +672,354 @@ public partial class TweetFormatterService
         
         return string.Join("\n", result);
     }
+
+    // -----------------------------------------------------------------------
+    // Thread formatting — per-stream methods
+    // -----------------------------------------------------------------------
+
+    /// <summary>Reads THREAD_MAX_POSTS from environment (default 4, minimum 2).</summary>
+    private static int GetMaxThreadPosts()
+    {
+        var value = Environment.GetEnvironmentVariable("THREAD_MAX_POSTS");
+        return int.TryParse(value, out var n) && n >= 2 ? n : 4;
+    }
+
+    /// <summary>Reads THREAD_TOP_HIGHLIGHTS from environment (default 3, minimum 1).</summary>
+    private static int GetTopHighlightsCount()
+    {
+        var value = Environment.GetEnvironmentVariable("THREAD_TOP_HIGHLIGHTS");
+        return int.TryParse(value, out var n) && n >= 1 ? n : 3;
+    }
+
+    /// <summary>Formats a Copilot CLI release as a thread for X/Twitter.</summary>
+    public Task<IReadOnlyList<string>> FormatCliThreadForXAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxTweetLength, Hashtag);
+
+    /// <summary>Formats a Copilot CLI release as a thread for Bluesky.</summary>
+    public Task<IReadOnlyList<string>> FormatCliThreadForBlueskyAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxBlueskyLength, Hashtag);
+
+    /// <summary>Formats a Copilot SDK release as a thread for X/Twitter.</summary>
+    public Task<IReadOnlyList<string>> FormatSdkThreadForXAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxTweetLength, SdkHashtag);
+
+    /// <summary>Formats a Copilot SDK release as a thread for Bluesky.</summary>
+    public Task<IReadOnlyList<string>> FormatSdkThreadForBlueskyAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxBlueskyLength, SdkHashtag);
+
+    private async Task<IReadOnlyList<string>> FormatReleaseThreadAsync(
+        ReleaseEntry entry, bool useAi, bool isCli, int maxPostLength, string hashtag)
+    {
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        ThreadPlan? plan = null;
+
+        if (shouldUseAi && _releaseSummarizer != null)
+        {
+            try
+            {
+                var feedType = isCli ? "cli" : "sdk";
+                plan = await _releaseSummarizer.PlanThreadAsync(
+                    entry.Title, entry.Content, feedType, maxPostLength,
+                    GetMaxThreadPosts(), GetTopHighlightsCount());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate AI thread plan, using fallback");
+            }
+        }
+
+        var header = isCli
+            ? $"{ReleaseEmoji} Copilot CLI v{entry.Title} released!"
+            : $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
+
+        return BuildReleaseThread(entry, plan, header, maxPostLength, hashtag);
+    }
+
+    private IReadOnlyList<string> BuildReleaseThread(
+        ReleaseEntry entry, ThreadPlan? plan, string header, int maxPostLength, string hashtag)
+    {
+        IReadOnlyList<string> highlights;
+        IReadOnlyList<string> followUpGroups;
+        int totalCount;
+
+        if (plan != null && plan.TopHighlights.Count > 0)
+        {
+            highlights = plan.TopHighlights;
+            followUpGroups = plan.ThreadPosts;
+            totalCount = plan.TotalCount;
+        }
+        else
+        {
+            // Deterministic fallback: extract features from HTML
+            var allFeatures = ExtractFeatureList(entry.Content);
+            var topN = GetTopHighlightsCount();
+            highlights = allFeatures.Take(topN).ToList();
+            followUpGroups = GroupFeatureLines(allFeatures.Skip(topN).ToList(), 4);
+            totalCount = allFeatures.Count;
+        }
+
+        return AssembleThread(header, highlights, followUpGroups, totalCount, entry.Link, hashtag, maxPostLength);
+    }
+
+    /// <summary>Formats a CLI weekly recap as a thread for X/Twitter.</summary>
+    public Task<IReadOnlyList<string>> FormatWeeklyCliRecapThreadAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi = false)
+        => FormatWeeklyCliRecapThreadInternalAsync(entries, weekStartPacific, weekEndPacific, improvementCount, useAi, MaxTweetLength);
+
+    private async Task<IReadOnlyList<string>> FormatWeeklyCliRecapThreadInternalAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi,
+        int maxPostLength)
+    {
+        var releaseCount = entries.Count;
+        var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
+        var releaseWord = releaseCount == 1 ? "release" : "releases";
+        var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
+        var header = string.Join("\n",
+            $"🗓️ Weekly recap ({dateRange})",
+            $"🚀 {releaseCount} {releaseWord}",
+            $"🛠️ {improvementCount} {improvementWord} 🧵");
+
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        ThreadPlan? plan = null;
+
+        if (shouldUseAi && _releaseSummarizer != null)
+        {
+            try
+            {
+                var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
+                plan = await _releaseSummarizer.PlanThreadAsync(
+                    "Copilot CLI weekly recap", combinedContent, "cli-weekly",
+                    maxPostLength, GetMaxThreadPosts(), GetTopHighlightsCount());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate AI thread plan for weekly recap, using fallback");
+            }
+        }
+
+        IReadOnlyList<string> highlights;
+        IReadOnlyList<string> followUpGroups;
+        int totalCount;
+
+        if (plan != null && plan.TopHighlights.Count > 0)
+        {
+            highlights = plan.TopHighlights;
+            followUpGroups = plan.ThreadPosts;
+            totalCount = plan.TotalCount;
+        }
+        else
+        {
+            var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
+            var allFeatures = ExtractFeatureList(combinedContent);
+            var topN = GetTopHighlightsCount();
+            highlights = allFeatures.Take(topN).ToList();
+            followUpGroups = GroupFeatureLines(allFeatures.Skip(topN).ToList(), 4);
+            totalCount = allFeatures.Count;
+        }
+
+        var url = "https://github.com/github/copilot-cli/releases";
+        return AssembleThread(header, highlights, followUpGroups, totalCount, url, Hashtag, maxPostLength);
+    }
+
+    /// <summary>Formats a VS Code Insiders daily changelog as a thread for X/Twitter.</summary>
+    public IReadOnlyList<string> FormatVSCodeChangelogThreadForX(
+        string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url)
+        => FormatVSCodeChangelogThread(fullSummary, featureCount, startDate, endDate, url, MaxTweetLength);
+
+    /// <summary>Formats a VS Code Insiders daily changelog as a thread for Bluesky.</summary>
+    public IReadOnlyList<string> FormatVSCodeChangelogThreadForBluesky(
+        string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url)
+        => FormatVSCodeChangelogThread(fullSummary, featureCount, startDate, endDate, url, MaxBlueskyLength);
+
+    private IReadOnlyList<string> FormatVSCodeChangelogThread(
+        string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url, int maxPostLength)
+    {
+        var dateLabel = startDate.Date == endDate.Date
+            ? FormatShortDate(endDate)
+            : $"{FormatShortDate(startDate)}-{FormatShortDate(endDate)}";
+        var featureWord = featureCount == 1 ? "feature" : "features";
+        var header = $"🚀 Insiders Update - {dateLabel}\n{featureCount} new {featureWord} 🧵";
+
+        return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength);
+    }
+
+    /// <summary>Formats a VS Code Insiders weekly recap as a thread for X/Twitter.</summary>
+    public async Task<IReadOnlyList<string>> FormatVSCodeWeeklyRecapThreadForXAsync(
+        int featureCount,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        string url,
+        Func<int, Task<string>> generateSummary)
+        => await FormatVSCodeWeeklyRecapThreadAsync(featureCount, weekStartPacific, weekEndPacific, url, generateSummary, MaxTweetLength);
+
+    /// <summary>Formats a VS Code Insiders weekly recap as a thread for Bluesky.</summary>
+    public async Task<IReadOnlyList<string>> FormatVSCodeWeeklyRecapThreadForBlueskyAsync(
+        int featureCount,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        string url,
+        Func<int, Task<string>> generateSummary)
+        => await FormatVSCodeWeeklyRecapThreadAsync(featureCount, weekStartPacific, weekEndPacific, url, generateSummary, MaxBlueskyLength);
+
+    private async Task<IReadOnlyList<string>> FormatVSCodeWeeklyRecapThreadAsync(
+        int featureCount,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        string url,
+        Func<int, Task<string>> generateSummary,
+        int maxPostLength)
+    {
+        var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
+        var featureWord = featureCount == 1 ? "feature" : "features";
+        var header = $"🗓️ Weekly recap ({dateRange})\n✨ {featureCount} new {featureWord} 🧵";
+
+        // Use a generous length to capture all highlights for thread splitting
+        const int ThreadSummaryLength = 800;
+        var fullSummary = await generateSummary(ThreadSummaryLength);
+
+        if (string.IsNullOrWhiteSpace(fullSummary))
+        {
+            fullSummary = "✨ See the latest Insiders updates";
+        }
+
+        return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength);
+    }
+
+    // -----------------------------------------------------------------------
+    // Thread assembly helpers
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Splits a summary string (newline-separated feature lines) into a thread,
+    /// using the first N lines as first-post highlights and grouping the rest.
+    /// </summary>
+    private IReadOnlyList<string> BuildThreadFromSummaryLines(
+        string header, string summary, int totalCount, string link, string hashtag, int maxPostLength)
+    {
+        var topN = GetTopHighlightsCount();
+
+        // Split summary into individual lines, filtering out "...and X more" markers
+        var lines = summary
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => !string.IsNullOrWhiteSpace(l) &&
+                        !l.StartsWith("...and ", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var highlights = (IReadOnlyList<string>)lines.Take(topN).ToList();
+        var followUpGroups = GroupFeatureLines(lines.Skip(topN).ToList(), 4);
+
+        return AssembleThread(header, highlights, followUpGroups, totalCount, link, hashtag, maxPostLength);
+    }
+
+    /// <summary>
+    /// Assembles a thread from its constituent parts.
+    /// Structure: [first post] [follow-up posts...] [last post with link]
+    /// </summary>
+    private static IReadOnlyList<string> AssembleThread(
+        string header,
+        IReadOnlyList<string> highlights,
+        IReadOnlyList<string> followUpGroups,
+        int totalCount,
+        string link,
+        string hashtag,
+        int maxPostLength)
+    {
+        var posts = new List<string>();
+
+        // --- First post ---
+        var highlightBlock = highlights.Count > 0 ? string.Join("\n", highlights) : string.Empty;
+        var leadIn = "See thread below 👇";
+        string firstPost;
+
+        if (string.IsNullOrEmpty(highlightBlock))
+        {
+            firstPost = $"{header}\n\n{leadIn}";
+        }
+        else
+        {
+            firstPost = $"{header}\n\n{highlightBlock}\n\n{leadIn}";
+        }
+
+        // Trim to platform limit if needed
+        if (firstPost.Length > maxPostLength)
+        {
+            var suffix = "\n\n" + leadIn;
+            var available = maxPostLength - suffix.Length;
+            firstPost = (available > 0 ? firstPost[..available] : header) + suffix;
+        }
+        posts.Add(firstPost);
+
+        // --- Follow-up posts ---
+        foreach (var group in followUpGroups)
+        {
+            var post = group.Length > maxPostLength ? group[..(maxPostLength - 3)] + "..." : group;
+            posts.Add(post);
+        }
+
+        // --- Last post: link + hashtag ---
+        posts.Add($"{link}\n\n{hashtag}");
+
+        return posts;
+    }
+
+    /// <summary>Extracts a plain list of emoji-prefixed feature strings from HTML release content.</summary>
+    private static List<string> ExtractFeatureList(string htmlContent)
+    {
+        var decoded = HttpUtility.HtmlDecode(htmlContent);
+        const string listItemPattern = @"<li[^>]*>(.*?)</li>";
+        var matches = Regex.Matches(decoded, listItemPattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        var features = new List<string>();
+
+        foreach (Match match in matches)
+        {
+            var text = StripHtml(match.Groups[1].Value).Trim();
+            // Remove PR/author references
+            text = Regex.Replace(text, @"(?:by\s+@\S+\s+)?(?:in\s+)?#\d+$|by\s+@\S+\s+in\s+#\d+",
+                string.Empty, RegexOptions.IgnoreCase).Trim();
+
+            if (!string.IsNullOrWhiteSpace(text)
+                && !text.StartsWith("Full Changelog", StringComparison.OrdinalIgnoreCase)
+                && !text.Contains("made their first contribution", StringComparison.OrdinalIgnoreCase))
+            {
+                features.Add($"{GetEmojiForFeature(text)} {text}");
+            }
+        }
+
+        if (features.Count == 0)
+        {
+            var plainText = StripHtml(decoded).Trim();
+            if (!string.IsNullOrWhiteSpace(plainText))
+            {
+                features.AddRange(
+                    plainText.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(l => l.Trim())
+                        .Where(l => !string.IsNullOrWhiteSpace(l) && !IsDateLine(l))
+                        .Select(l => $"{GetEmojiForFeature(l)} {l}"));
+            }
+        }
+
+        return features;
+    }
+
+    /// <summary>Groups a flat list of lines into chunks of <paramref name="linesPerGroup"/> each.</summary>
+    private static IReadOnlyList<string> GroupFeatureLines(IList<string> lines, int linesPerGroup)
+    {
+        if (lines.Count == 0) return [];
+
+        var groups = new List<string>();
+        for (var i = 0; i < lines.Count; i += linesPerGroup)
+        {
+            groups.Add(string.Join("\n", lines.Skip(i).Take(linesPerGroup)));
+        }
+        return groups;
+    }
 }

@@ -43,10 +43,18 @@ public class TwitterApiClient
 
     public async Task<bool> PostTweetAsync(string text)
     {
+        return await PostTweetAndGetIdAsync(text) != null;
+    }
+
+    /// <summary>
+    /// Posts a tweet and returns the tweet ID, or null on failure.
+    /// </summary>
+    public async Task<string?> PostTweetAndGetIdAsync(string text, string? replyToTweetId = null)
+    {
         if (!IsConfigured)
         {
             _logger.LogWarning("Twitter credentials not configured. Skipping tweet.");
-            return false;
+            return null;
         }
 
         try
@@ -61,7 +69,13 @@ public class TwitterApiClient
             
             using var request = new HttpRequestMessage(HttpMethod.Post, TwitterApiUrl);
             request.Headers.Add("Authorization", authHeader);
-            request.Content = JsonContent.Create(new TweetRequest { Text = text });
+
+            var body = new TweetRequest { Text = text };
+            if (!string.IsNullOrEmpty(replyToTweetId))
+            {
+                body.Reply = new TweetReplyRequest { InReplyToTweetId = replyToTweetId };
+            }
+            request.Content = JsonContent.Create(body);
 
             var response = await _httpClient.SendAsync(request);
             var responseContent = await response.Content.ReadAsStringAsync();
@@ -69,22 +83,61 @@ public class TwitterApiClient
             if (response.IsSuccessStatusCode)
             {
                 var tweetResponse = JsonSerializer.Deserialize<TweetResponse>(responseContent);
-                _logger.LogInformation("Tweet posted successfully. Tweet ID: {TweetId}", 
-                    tweetResponse?.Data?.Id);
-                return true;
+                var tweetId = tweetResponse?.Data?.Id;
+                _logger.LogInformation("Tweet posted successfully. Tweet ID: {TweetId}", tweetId);
+                return tweetId;
             }
             else
             {
                 _logger.LogError("Failed to post tweet. Status: {StatusCode}, Response: {Response}", 
                     response.StatusCode, responseContent);
-                return false;
+                return null;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error posting tweet");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Posts multiple tweets as a reply chain (thread). Returns true if all posts succeeded.
+    /// </summary>
+    public async Task<bool> PostTweetThreadAsync(IReadOnlyList<string> posts)
+    {
+        if (posts == null || posts.Count == 0)
+        {
             return false;
         }
+
+        if (posts.Count == 1)
+        {
+            return await PostTweetAsync(posts[0]);
+        }
+
+        string? lastTweetId = null;
+        var allSucceeded = true;
+
+        for (var i = 0; i < posts.Count; i++)
+        {
+            var tweetId = await PostTweetAndGetIdAsync(posts[i], lastTweetId);
+            if (tweetId == null)
+            {
+                _logger.LogWarning("Thread post {Index}/{Total} failed. Stopping thread.", i + 1, posts.Count);
+                allSucceeded = false;
+                break;
+            }
+            lastTweetId = tweetId;
+
+            // Small delay between thread posts to avoid rate limiting
+            if (i < posts.Count - 1)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+        }
+
+        return allSucceeded;
     }
 }
 
@@ -92,6 +145,15 @@ public class TweetRequest
 {
     [JsonPropertyName("text")]
     public required string Text { get; set; }
+
+    [JsonPropertyName("reply")]
+    public TweetReplyRequest? Reply { get; set; }
+}
+
+public class TweetReplyRequest
+{
+    [JsonPropertyName("in_reply_to_tweet_id")]
+    public required string InReplyToTweetId { get; set; }
 }
 
 public class TweetResponse

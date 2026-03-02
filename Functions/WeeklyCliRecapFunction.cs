@@ -83,16 +83,17 @@ public class WeeklyCliRecapFunction
 
             var improvementCount = weeklyEntries.Sum(e => CountImprovements(e.Content));
 
-            var tweet = await _tweetFormatterService.FormatWeeklyCliRecapTweetAsync(
+            var thread = await _tweetFormatterService.FormatWeeklyCliRecapThreadAsync(
                 weeklyEntries,
                 weekStartPacific,
                 weekEndPacific,
                 improvementCount,
                 useAi: true);
 
-            _logger.LogInformation("Formatted weekly recap tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
+            _logger.LogInformation("Formatted weekly recap thread ({PostCount} posts, first {Length} chars):\n{Tweet}",
+                thread.Count, thread[0].Length, thread[0]);
 
-            var success = await _twitterApiClient.PostTweetAsync(tweet);
+            var success = await _twitterApiClient.PostTweetThreadAsync(thread);
 
             if (success)
             {

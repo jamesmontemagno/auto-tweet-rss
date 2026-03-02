@@ -62,24 +62,25 @@ public class SdkReleaseNotifierFunction
             // Process new entries (oldest first to maintain chronological order)
             foreach (var entry in newEntries.OrderBy(e => e.Updated))
             {
-                // Format the tweet
-                var tweet = await _tweetFormatterService.FormatSdkTweetAsync(entry);
+                // Format the tweet as a thread
+                var thread = await _tweetFormatterService.FormatSdkThreadForXAsync(entry);
                 
-                _logger.LogInformation("Formatted SDK tweet ({Length} chars):\n{Tweet}", tweet.Length, tweet);
+                _logger.LogInformation("Formatted SDK thread ({PostCount} posts, first {Length} chars):\n{Tweet}",
+                    thread.Count, thread[0].Length, thread[0]);
 
-                // Post to Twitter
-                var success = await _twitterApiClient.PostTweetAsync(tweet);
+                // Post to Twitter as a thread
+                var success = await _twitterApiClient.PostTweetThreadAsync(thread);
                 
                 if (success)
                 {
                     // Update state after successful post
                     await _stateTrackingService.SetLastProcessedIdAsync(entry.Id, stateFileName);
-                    _logger.LogInformation("Successfully tweeted SDK release: {Title}", entry.Title);
+                    _logger.LogInformation("Successfully tweeted SDK thread: {Title}", entry.Title);
                 }
                 else
                 {
                     // Log and skip on failure (as per requirements)
-                    _logger.LogWarning("Failed to tweet SDK release: {Title}. Skipping.", entry.Title);
+                    _logger.LogWarning("Failed to tweet SDK thread: {Title}. Skipping.", entry.Title);
                 }
 
                 // Small delay between tweets to avoid rate limiting
