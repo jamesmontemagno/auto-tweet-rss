@@ -648,12 +648,18 @@ Example output format (single feature from multiple related list items):
                 new(ChatRole.User, prompt)
             };
 
-            _logger.LogInformation("Requesting AI thread plan for {FeedType} release: {Title} ({TotalItems} items)", feedType, releaseTitle, totalItemCount);
+            _logger.LogInformation("Requesting AI thread plan for {FeedType} release: {Title} ({TotalItems} items, prompt length {PromptLength} chars)",
+                feedType, releaseTitle, totalItemCount, prompt.Length);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
 
-            var response = await _chatClient.GetResponseAsync(messages, cancellationToken: timeoutCts.Token);
+            var options = new ChatOptions
+            {
+                ResponseFormat = ChatResponseFormat.Json
+            };
+
+            var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
             var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
 
             // Strip any markdown code fences
