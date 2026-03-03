@@ -147,6 +147,7 @@ public class TweetRequest
     public required string Text { get; set; }
 
     [JsonPropertyName("reply")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public TweetReplyRequest? Reply { get; set; }
 }
 
