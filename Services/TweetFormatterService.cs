@@ -22,7 +22,8 @@ public partial class TweetFormatterService
     private const int MinTruncatedLineLength = 10; // Minimum meaningful characters to show after truncation
     
     // Emojis for different content types
-    private const string ReleaseEmoji = "🚀";
+    private const string ReleaseEmojiCLI = "🚀✨";
+    private const string ReleaseEmojiSDK = "🎉🔨";
     private const string FeatureEmoji = "✨";
     private const string PerformanceEmoji = "⚡";
     private const string BugFixEmoji = "🐛";
@@ -75,7 +76,7 @@ public partial class TweetFormatterService
         }
 
         // Calculate available space for AI summary
-        var header = $"{ReleaseEmoji} Copilot CLI v{entry.Title} released!";
+        var header = $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!";
         var newlines = 6; // 2 between each section
         var hashtagLength = Hashtag.Length;
         
@@ -102,7 +103,7 @@ public partial class TweetFormatterService
     {
         // Calculate available space
         // Format: "{header}\n\n{features}\n\n{url}\n\n{hashtag}"
-        var header = $"{ReleaseEmoji} Copilot CLI v{entry.Title} released!";
+        var header = $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!";
         var newlines = 6; // 2 between each section
         var hashtagLength = Hashtag.Length;
         
@@ -156,7 +157,7 @@ public partial class TweetFormatterService
         }
 
         // Calculate available space for AI summary
-        var header = $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
+        var header = $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
         var newlines = 6; // 2 between each section
         var hashtagLength = SdkHashtag.Length;
         var buffer = 6; // Small buffer to avoid edge cases
@@ -429,7 +430,7 @@ public partial class TweetFormatterService
     {
         // Calculate available space
         // Format: "{header}\n\n{summary}\n\n{url}\n\n{hashtag}"
-        var header = $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
+        var header = $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
         var newlines = 6; // 2 between each section
         var hashtagLength = SdkHashtag.Length;
         
@@ -729,8 +730,8 @@ public partial class TweetFormatterService
         }
 
         var header = isCli
-            ? $"{ReleaseEmoji} Copilot CLI v{entry.Title} released!"
-            : $"{ReleaseEmoji} Copilot SDK {entry.Title} released!";
+            ? $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!"
+            : $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
 
         return BuildReleaseThread(entry, plan, header, maxPostLength, hashtag);
     }
