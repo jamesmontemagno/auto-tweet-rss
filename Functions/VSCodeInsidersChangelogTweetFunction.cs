@@ -130,18 +130,32 @@ public class VSCodeInsidersChangelogTweetFunction
                 aiOnly: false,
                 isThisWeek: false);
 
-            var xThread = _tweetFormatterService.FormatVSCodeChangelogThreadForX(summary, notes.Features.Count, startDate, latestReleaseDate, notes.WebsiteUrl);
+            var useXPremiumMode = IsEnabled("X_VSCODE_PREMIUM_MODE");
+            var xPosts = useXPremiumMode
+                ? new List<string>
+                {
+                    _tweetFormatterService.FormatVSCodeChangelogPremiumPostForX(
+                        notes.Features,
+                        notes.Features.Count,
+                        startDate,
+                        latestReleaseDate,
+                        notes.WebsiteUrl)
+                }
+                : _tweetFormatterService.FormatVSCodeChangelogThreadForX(summary, notes.Features.Count, startDate, latestReleaseDate, notes.WebsiteUrl).ToList();
             var blueskyThread = _tweetFormatterService.FormatVSCodeChangelogThreadForBluesky(summary, notes.Features.Count, startDate, latestReleaseDate, notes.WebsiteUrl);
 
-            _logger.LogInformation("Formatted VS Code changelog X thread ({PostCount} posts, first {Length} chars):\n{Post}",
-                xThread.Count, xThread[0].Length, xThread[0]);
+            _logger.LogInformation("Formatted VS Code changelog X {Mode} ({PostCount} posts, first {Length} chars):\n{Post}",
+                useXPremiumMode ? "premium post" : "thread",
+                xPosts.Count,
+                xPosts[0].Length,
+                xPosts[0]);
             _logger.LogInformation("Formatted VS Code changelog Bluesky thread ({PostCount} posts, first {Length} chars):\n{Post}",
                 blueskyThread.Count, blueskyThread[0].Length, blueskyThread[0]);
 
             var success = await _publisher.PostThreadToAllAsync(client =>
                 string.Equals(client.PlatformName, "Bluesky", StringComparison.OrdinalIgnoreCase)
                     ? blueskyThread
-                    : xThread);
+                    : xPosts);
             if (success)
             {
                 _logger.LogInformation(
@@ -178,5 +192,16 @@ public class VSCodeInsidersChangelogTweetFunction
         {
             return TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
         }
+    }
+
+    private static bool IsEnabled(string envVar)
+    {
+        var value = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return bool.TryParse(value, out var enabled) && enabled;
     }
 }

@@ -21,6 +21,7 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 - Polls feeds every 15 minutes
 - Filters out pre-release versions and submodule releases
 - **AI-powered threaded posts**: Uses Microsoft.Extensions.AI with Azure OpenAI to generate concise, emoji-enhanced threads with top highlights in the first post, grouped follow-up posts, and the release link in the final post
+- **Optional Premium X mega-posts**: Per-account settings can switch X output from thread mode to a single post (up to 25,000 chars) organized into Top features, Enhancements, Bug fixes, and Misc
 - **Deterministic fallback**: When AI is unavailable, threads are built from HTML-parsed release notes so posting always succeeds
 - Posts to Twitter/X using OAuth 1.0a authentication (with reply-chain thread support)
 - Cross-posts VS Code automation to Bluesky (with AT Protocol reply thread support)
@@ -149,6 +150,8 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-4o-mini`) |
 | `ENABLE_AI_SUMMARIES` | Enable AI-powered thread planning for timer functions | No (default: `false`) |
 | `AI_THREAD_PLAN_TIMEOUT_SECONDS` | Timeout (seconds) for AI thread-plan requests before fallback | No (default: `60`) |
+| `X_CLI_CHANGELOG_PREMIUM_MODE` | When `true`, posts CLI/SDK updates to X as one Premium mega-post instead of a thread | No (default: `false`) |
+| `X_VSCODE_PREMIUM_MODE` | When `true`, posts VS Code updates to X as one Premium mega-post instead of a thread | No (default: `false`) |
 | `THREAD_MAX_POSTS` | Maximum number of posts per thread (including first and last) | No (default: `6`, minimum: `2`) |
 | `THREAD_TOP_HIGHLIGHTS` | Number of top highlights shown in the first post | No (default: `3`, minimum: `1`) |
 
@@ -210,6 +213,9 @@ To enable AI-powered summaries:
 4. **Thread behavior**: 
    - All streams now publish **threads** by default (first post + follow-ups + last post with link).
    - Thread structure is always applied; AI improves the ranking/grouping when configured.
+   - You can opt specific X accounts into Premium mega-post mode:
+     - `X_CLI_CHANGELOG_PREMIUM_MODE=true` for CLI/SDK account
+     - `X_VSCODE_PREMIUM_MODE=true` for VS Code account
    - Control thread size with `THREAD_MAX_POSTS` (default: `6`) and `THREAD_TOP_HIGHLIGHTS` (default: `3`).
 
 5. **AI Thread Planning**: 

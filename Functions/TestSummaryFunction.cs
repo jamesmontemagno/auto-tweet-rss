@@ -38,6 +38,7 @@ public class TestSummaryFunction
         try
         {
             var typeLower = type.ToLowerInvariant();
+            var premiumMode = IsEnabledQuery(req, "premium");
 
             // Validate type parameter
             if (typeLower != "cli" && typeLower != "sdk" && typeLower != "vscode")
@@ -50,7 +51,7 @@ public class TestSummaryFunction
             // VS Code path
             if (typeLower == "vscode")
             {
-                return await HandleVSCodeTestSummaryAsync(req, response);
+                return await HandleVSCodeTestSummaryAsync(req, response, premiumMode);
             }
 
             // Determine feed URL based on type
@@ -87,13 +88,23 @@ public class TestSummaryFunction
 
             // Generate the thread (always use AI for test endpoint)
             IReadOnlyList<string> thread;
-            if (isSdkFeed)
+            if (premiumMode)
             {
-                thread = await _tweetFormatterService.FormatSdkThreadForXAsync(latestEntry, useAi: true);
+                var post = isSdkFeed
+                    ? await _tweetFormatterService.FormatSdkPremiumPostForXAsync(latestEntry, useAi: true)
+                    : await _tweetFormatterService.FormatCliPremiumPostForXAsync(latestEntry, useAi: true);
+                thread = [post];
             }
             else
             {
-                thread = await _tweetFormatterService.FormatCliThreadForXAsync(latestEntry, useAi: true);
+                if (isSdkFeed)
+                {
+                    thread = await _tweetFormatterService.FormatSdkThreadForXAsync(latestEntry, useAi: true);
+                }
+                else
+                {
+                    thread = await _tweetFormatterService.FormatCliThreadForXAsync(latestEntry, useAi: true);
+                }
             }
 
             // Return the formatted thread
@@ -128,7 +139,7 @@ public class TestSummaryFunction
         }
     }
 
-    private async Task<HttpResponseData> HandleVSCodeTestSummaryAsync(HttpRequestData req, HttpResponseData response)
+    private async Task<HttpResponseData> HandleVSCodeTestSummaryAsync(HttpRequestData req, HttpResponseData response, bool premiumMode)
     {
         var dateParam = GetQueryParameter(req, "date");
         DateTime targetDate;
@@ -158,7 +169,21 @@ public class TestSummaryFunction
             format: $"test-daily-{targetDate:yyyyMMdd}",
             forceRefresh: true);
 
-        var thread = _tweetFormatterService.FormatVSCodeChangelogThreadForX(summary, notes.Features.Count, targetDate, targetDate, notes.WebsiteUrl);
+        IReadOnlyList<string> thread;
+        if (premiumMode)
+        {
+            var post = _tweetFormatterService.FormatVSCodeChangelogPremiumPostForX(
+                notes.Features,
+                notes.Features.Count,
+                targetDate,
+                targetDate,
+                notes.WebsiteUrl);
+            thread = [post];
+        }
+        else
+        {
+            thread = _tweetFormatterService.FormatVSCodeChangelogThreadForX(summary, notes.Features.Count, targetDate, targetDate, notes.WebsiteUrl);
+        }
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
@@ -186,5 +211,11 @@ public class TestSummaryFunction
     {
         var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
         return query[name];
+    }
+
+    private static bool IsEnabledQuery(HttpRequestData req, string name)
+    {
+        var value = GetQueryParameter(req, name);
+        return bool.TryParse(value, out var enabled) && enabled;
     }
 }

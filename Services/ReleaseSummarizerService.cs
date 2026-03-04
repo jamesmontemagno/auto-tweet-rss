@@ -716,18 +716,7 @@ Return ALL items ranked by importance. Respond with JSON only. Example:
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
 
                 var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
-                var json = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
-
-                // Strip any markdown code fences
-                if (json.StartsWith("```", StringComparison.Ordinal))
-                {
-                    var firstNewline = json.IndexOf('\n');
-                    var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
-                    if (firstNewline >= 0 && lastFence > firstNewline)
-                    {
-                        json = json[(firstNewline + 1)..lastFence].Trim();
-                    }
-                }
+                var json = StripCodeFences(response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty);
 
                 var plan = System.Text.Json.JsonSerializer.Deserialize<ThreadPlan>(json, new System.Text.Json.JsonSerializerOptions
                 {
@@ -788,6 +777,166 @@ Return ALL items ranked by importance. Respond with JSON only. Example:
         return null;
     }
 
+    /// <summary>
+    /// Uses AI to produce a single-post Premium X plan already organized into sections.
+    /// Returns null if AI is unavailable or response parsing fails.
+    /// </summary>
+    public async Task<PremiumPostPlan?> PlanPremiumPostAsync(
+        string releaseTitle,
+        string releaseContent,
+        string feedType,
+        int maxLength,
+        CancellationToken cancellationToken = default)
+    {
+        const int maxRetries = 3;
+        var totalItemCount = CountItemsInRelease(releaseContent, feedType);
+        var cleaned = PrepareContentForAi(releaseContent);
+
+        var prompt = $@"Create a Premium X mega-post plan for this {feedType} release: {releaseTitle}
+
+Release Content:
+{cleaned}
+
+Constraints:
+- Premium X maximum post length: {maxLength} characters
+- Organize content into these exact sections: Top features, Enhancements, Bug fixes, Misc
+- Return concise, emoji-prefixed items
+- Include as many distinct updates as possible while staying concise
+
+Respond with JSON only. Example:
+{{
+  ""totalCount"": 24,
+  ""topFeatures"": [""✨ Smarter workspace context selection for prompts"", ""✨ New remote agent setup flow""],
+  ""enhancements"": [""⚡ Faster indexing for large repositories""],
+  ""bugFixes"": [""🐛 Fixed auth refresh edge cases""],
+  ""misc"": [""📖 Updated setup and troubleshooting docs""]
+}}";
+
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
+        {
+            new(ChatRole.System, GetPremiumPostSystemPrompt()),
+            new(ChatRole.User, prompt)
+        };
+
+        var options = new ChatOptions
+        {
+            ResponseFormat = ChatResponseFormat.Json
+        };
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Requesting AI premium plan for {FeedType} release: {Title} (attempt {Attempt}/{MaxRetries}, {TotalItems} items)",
+                    feedType, releaseTitle, attempt, maxRetries, totalItemCount);
+
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
+
+                var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
+                var json = StripCodeFences(response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty);
+
+                var plan = System.Text.Json.JsonSerializer.Deserialize<PremiumPostPlan>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (plan == null)
+                {
+                    _logger.LogWarning("AI premium post plan was null for {FeedType}: {Title}", feedType, releaseTitle);
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+                    return null;
+                }
+
+                plan.TopFeatures ??= [];
+                plan.Enhancements ??= [];
+                plan.BugFixes ??= [];
+                plan.Misc ??= [];
+
+                var itemCount = plan.TopFeatures.Count + plan.Enhancements.Count + plan.BugFixes.Count + plan.Misc.Count;
+                if (itemCount == 0)
+                {
+                    _logger.LogWarning("AI premium post plan had no categorized items for {FeedType}: {Title}", feedType, releaseTitle);
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+                    return null;
+                }
+
+                if (plan.TotalCount <= 0)
+                {
+                    plan.TotalCount = totalItemCount > 0 ? totalItemCount : itemCount;
+                }
+
+                _logger.LogInformation(
+                    "Generated premium plan: total={TotalCount}, top={TopCount}, enh={EnhCount}, bugs={BugCount}, misc={MiscCount} for {FeedType}: {Title}",
+                    plan.TotalCount,
+                    plan.TopFeatures.Count,
+                    plan.Enhancements.Count,
+                    plan.BugFixes.Count,
+                    plan.Misc.Count,
+                    feedType,
+                    releaseTitle);
+
+                return plan;
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex,
+                    "Timed out generating AI premium plan for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries}).",
+                    feedType, releaseTitle, attempt, maxRetries);
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                var errorCode = (ex as Azure.RequestFailedException)?.ErrorCode ?? "N/A";
+                var statusCode = (ex as Azure.RequestFailedException)?.Status.ToString() ?? "N/A";
+                _logger.LogError(ex,
+                    "Error generating AI premium plan for {FeedType}: {Title} (attempt {Attempt}/{MaxRetries}). StatusCode={StatusCode}, ErrorCode={ErrorCode}",
+                    feedType, releaseTitle, attempt, maxRetries, statusCode, errorCode);
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static string StripCodeFences(string json)
+    {
+        if (!json.StartsWith("```", StringComparison.Ordinal))
+        {
+            return json;
+        }
+
+        var firstNewline = json.IndexOf('\n');
+        var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
+        if (firstNewline >= 0 && lastFence > firstNewline)
+        {
+            return json[(firstNewline + 1)..lastFence].Trim();
+        }
+
+        return json;
+    }
+
     private static int GetThreadPlanTimeoutSeconds()
     {
         var configured = Environment.GetEnvironmentVariable("AI_THREAD_PLAN_TIMEOUT_SECONDS");
@@ -798,7 +947,7 @@ Return ALL items ranked by importance. Respond with JSON only. Example:
 
     private static string GetThreadPlanSystemPrompt() => @"You are an expert at analyzing software release notes for social media.
 
-Your task is to extract, rank, and format features from release notes. You MUST respond with valid JSON only — no prose, no code fences.
+Your task is to extract, rank, and format features from release notes. You MUST respond with valid JSON only - no prose, no code fences.
 
 The JSON must have exactly these fields:
 - ""totalCount"": integer, total number of distinct features/fixes/changes
@@ -806,10 +955,39 @@ The JSON must have exactly these fields:
 
 Rules:
 - Each item must start with an appropriate emoji (✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨)
-- Each item should be 40-70 characters — descriptive but concise
+- Each item should be 40-70 characters - descriptive but concise
 - NEVER include user names, contributor names, or issue/PR numbers
 - Deduplicate similar items
 - Focus on WHAT changed and WHY it matters to users";
+
+    private static string GetPremiumPostSystemPrompt() => @"You are an expert social media release editor.
+
+You MUST respond with valid JSON only and no markdown fences.
+
+Create a Premium X mega-post plan organized into these exact categories:
+- topFeatures
+- enhancements
+- bugFixes
+- misc
+
+Rules:
+- Include the most important updates under topFeatures first
+- Place performance, UX polish, and iterative upgrades under enhancements
+- Place defects/regressions under bugFixes
+- Place docs/tooling/other updates under misc
+- Each item must start with an emoji and be concise
+- Never include usernames, PR numbers, or issue IDs
+- Deduplicate overlapping items
+- Keep wording useful for developers, not marketing fluff
+
+JSON schema:
+{
+  ""totalCount"": number,
+  ""topFeatures"": string[],
+  ""enhancements"": string[],
+  ""bugFixes"": string[],
+  ""misc"": string[]
+}";
 }
 
 /// <summary>
@@ -819,4 +997,16 @@ public class ThreadPlan
 {
     public int TotalCount { get; set; }
     public List<string> Items { get; set; } = [];
+}
+
+/// <summary>
+/// Represents an AI-generated categorized plan for Premium X mega-post rendering.
+/// </summary>
+public class PremiumPostPlan
+{
+    public int TotalCount { get; set; }
+    public List<string> TopFeatures { get; set; } = [];
+    public List<string> Enhancements { get; set; } = [];
+    public List<string> BugFixes { get; set; } = [];
+    public List<string> Misc { get; set; } = [];
 }

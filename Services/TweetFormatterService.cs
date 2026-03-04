@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Web;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,7 @@ public partial class TweetFormatterService
 
     // Twitter limits
     private const int MaxTweetLength = 280;
+    private const int MaxPremiumTweetLength = 25000;
     private const int MaxBlueskyLength = 300;
     private const int UrlLength = 23; // t.co shortens all URLs to 23 chars
     private const string Hashtag = "#GitHubCopilotCLI";
@@ -708,6 +710,14 @@ public partial class TweetFormatterService
     public Task<IReadOnlyList<string>> FormatSdkThreadForBlueskyAsync(ReleaseEntry entry, bool useAi = false)
         => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxBlueskyLength, SdkHashtag);
 
+    /// <summary>Formats a Copilot CLI release as a single Premium X mega-post.</summary>
+    public Task<string> FormatCliPremiumPostForXAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleasePremiumPostForXAsync(entry, useAi, isCli: true, Hashtag);
+
+    /// <summary>Formats a Copilot SDK release as a single Premium X mega-post.</summary>
+    public Task<string> FormatSdkPremiumPostForXAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleasePremiumPostForXAsync(entry, useAi, isCli: false, SdkHashtag);
+
     private async Task<IReadOnlyList<string>> FormatReleaseThreadAsync(
         ReleaseEntry entry, bool useAi, bool isCli, int maxPostLength, string hashtag)
     {
@@ -734,6 +744,68 @@ public partial class TweetFormatterService
             : $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
 
         return BuildReleaseThread(entry, plan, header, maxPostLength, hashtag);
+    }
+
+    private async Task<string> FormatReleasePremiumPostForXAsync(
+        ReleaseEntry entry,
+        bool useAi,
+        bool isCli,
+        string hashtag)
+    {
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        PremiumPostPlan? premiumPlan = null;
+        ThreadPlan? threadPlan = null;
+
+        if (shouldUseAi && _releaseSummarizer != null)
+        {
+            try
+            {
+                var feedType = isCli ? "cli" : "sdk";
+                premiumPlan = await _releaseSummarizer.PlanPremiumPostAsync(
+                    entry.Title,
+                    entry.Content,
+                    feedType,
+                    MaxPremiumTweetLength);
+
+                if (premiumPlan == null)
+                {
+                    threadPlan = await _releaseSummarizer.PlanThreadAsync(
+                        entry.Title,
+                        entry.Content,
+                        feedType,
+                        MaxPremiumTweetLength,
+                        maxPosts: 1,
+                        topHighlights: Math.Max(GetTopHighlightsCount(), 5));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate AI premium post plan, using fallback");
+            }
+        }
+
+        var header = isCli
+            ? $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!"
+            : $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
+
+        if (premiumPlan != null)
+        {
+            return BuildPremiumMegaPost(
+                header,
+                premiumPlan.TotalCount,
+                premiumPlan.TopFeatures,
+                premiumPlan.Enhancements,
+                premiumPlan.BugFixes,
+                premiumPlan.Misc,
+                entry.Link,
+                hashtag,
+                MaxPremiumTweetLength);
+        }
+
+        var rankedItems = threadPlan?.Items?.Count > 0 ? threadPlan.Items : ExtractFeatureList(entry.Content);
+        var totalCount = threadPlan?.TotalCount > 0 ? threadPlan.TotalCount : rankedItems.Count;
+
+        return BuildPremiumMegaPost(header, totalCount, rankedItems, entry.Link, hashtag, MaxPremiumTweetLength);
     }
 
     private IReadOnlyList<string> BuildReleaseThread(
@@ -839,6 +911,67 @@ public partial class TweetFormatterService
     public IReadOnlyList<string> FormatVSCodeChangelogThreadForBluesky(
         string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url)
         => FormatVSCodeChangelogThread(fullSummary, featureCount, startDate, endDate, url, MaxBlueskyLength);
+
+    /// <summary>Formats a VS Code changelog as a single Premium X mega-post.</summary>
+    public string FormatVSCodeChangelogPremiumPostForX(
+        IReadOnlyList<VSCodeFeature> features,
+        int featureCount,
+        DateTime startDate,
+        DateTime endDate,
+        string url)
+    {
+        var dateLabel = startDate.Date == endDate.Date
+            ? FormatShortDate(endDate)
+            : $"{FormatShortDate(startDate)}-{FormatShortDate(endDate)}";
+
+        var header = $"🚀 Insiders Update - {dateLabel}";
+
+        var topFeatures = new List<string>();
+        var enhancements = new List<string>();
+        var bugFixes = new List<string>();
+        var misc = new List<string>();
+
+        foreach (var feature in features)
+        {
+            var text = string.IsNullOrWhiteSpace(feature.Description)
+                ? feature.Title
+                : $"{feature.Title}: {feature.Description}";
+            text = text.Trim();
+            if (text.Length > 230)
+            {
+                text = text[..227] + "...";
+            }
+
+            var line = $"{GetEmojiForFeature(text)} {text}";
+            if (bugFixes.Count < 15 && ClassifyFeatureBucket(line) == FeatureBucket.BugFix)
+            {
+                bugFixes.Add(line);
+            }
+            else if (enhancements.Count < 20 && ClassifyFeatureBucket(line) == FeatureBucket.Enhancement)
+            {
+                enhancements.Add(line);
+            }
+            else if (topFeatures.Count < 20)
+            {
+                topFeatures.Add(line);
+            }
+            else
+            {
+                misc.Add(line);
+            }
+        }
+
+        return BuildPremiumMegaPost(
+            header,
+            featureCount,
+            topFeatures,
+            enhancements,
+            bugFixes,
+            misc,
+            url,
+            VSCodeHashtag,
+            MaxPremiumTweetLength);
+    }
 
     private IReadOnlyList<string> FormatVSCodeChangelogThread(
         string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url, int maxPostLength)
@@ -1093,5 +1226,184 @@ public partial class TweetFormatterService
         }
 
         return posts;
+    }
+
+    private string BuildPremiumMegaPost(
+        string header,
+        int totalCount,
+        IReadOnlyList<string> rankedItems,
+        string link,
+        string hashtag,
+        int maxLength)
+    {
+        var topCount = Math.Clamp(GetTopHighlightsCount() * 2, 5, 10);
+        var topFeatures = rankedItems.Take(topCount).ToList();
+        var remaining = rankedItems.Skip(topCount).ToList();
+
+        var enhancements = new List<string>();
+        var bugFixes = new List<string>();
+        var misc = new List<string>();
+
+        foreach (var item in remaining)
+        {
+            var bucket = ClassifyFeatureBucket(item);
+            if (bucket == FeatureBucket.BugFix)
+            {
+                bugFixes.Add(item);
+            }
+            else if (bucket == FeatureBucket.Enhancement)
+            {
+                enhancements.Add(item);
+            }
+            else
+            {
+                misc.Add(item);
+            }
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine(header);
+        sb.AppendLine();
+        sb.AppendLine($"{totalCount} updates in one post");
+
+        AppendSection(sb, "Top features", topFeatures, maxLength);
+        AppendSection(sb, "Enhancements", enhancements, maxLength);
+        AppendSection(sb, "Bug fixes", bugFixes, maxLength);
+        AppendSection(sb, "Misc", misc, maxLength);
+
+        var footer = $"\n{link}\n\n{hashtag}";
+        if (sb.Length + footer.Length <= maxLength)
+        {
+            sb.Append(footer);
+        }
+        else
+        {
+            var budget = maxLength - sb.Length - hashtag.Length - 4;
+            if (budget > 15)
+            {
+                var shortenedLink = link.Length > budget ? link[..(budget - 3)] + "..." : link;
+                sb.Append("\n").Append(shortenedLink).Append("\n\n").Append(hashtag);
+            }
+            else
+            {
+                sb.Append("\n\n").Append(hashtag);
+            }
+        }
+
+        var post = sb.ToString().Trim();
+        if (post.Length > maxLength)
+        {
+            post = post[..(maxLength - 3)] + "...";
+        }
+
+        return post;
+    }
+
+    private string BuildPremiumMegaPost(
+        string header,
+        int totalCount,
+        IReadOnlyList<string> topFeatures,
+        IReadOnlyList<string> enhancements,
+        IReadOnlyList<string> bugFixes,
+        IReadOnlyList<string> misc,
+        string link,
+        string hashtag,
+        int maxLength)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(header);
+        sb.AppendLine();
+        sb.AppendLine($"{totalCount} updates in one post");
+
+        AppendSection(sb, "Top features", topFeatures, maxLength);
+        AppendSection(sb, "Enhancements", enhancements, maxLength);
+        AppendSection(sb, "Bug fixes", bugFixes, maxLength);
+        AppendSection(sb, "Misc", misc, maxLength);
+
+        var footer = $"\n{link}\n\n{hashtag}";
+        if (sb.Length + footer.Length <= maxLength)
+        {
+            sb.Append(footer);
+        }
+        else
+        {
+            var budget = maxLength - sb.Length - hashtag.Length - 4;
+            if (budget > 15)
+            {
+                var shortenedLink = link.Length > budget ? link[..(budget - 3)] + "..." : link;
+                sb.Append("\n").Append(shortenedLink).Append("\n\n").Append(hashtag);
+            }
+            else
+            {
+                sb.Append("\n\n").Append(hashtag);
+            }
+        }
+
+        var post = sb.ToString().Trim();
+        if (post.Length > maxLength)
+        {
+            post = post[..(maxLength - 3)] + "...";
+        }
+
+        return post;
+    }
+
+    private static void AppendSection(StringBuilder sb, string title, IReadOnlyList<string> items, int maxLength)
+    {
+        if (sb.Length >= maxLength - 32)
+        {
+            return;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"{title}:");
+
+        if (items.Count == 0)
+        {
+            sb.AppendLine("- None this cycle");
+            return;
+        }
+
+        foreach (var item in items)
+        {
+            var line = $"- {item}";
+            if (sb.Length + line.Length + 1 > maxLength)
+            {
+                sb.AppendLine("- ...and more");
+                return;
+            }
+
+            sb.AppendLine(line);
+        }
+    }
+
+    private enum FeatureBucket
+    {
+        TopFeature,
+        Enhancement,
+        BugFix,
+        Misc
+    }
+
+    private static FeatureBucket ClassifyFeatureBucket(string text)
+    {
+        var value = text.ToLowerInvariant();
+
+        if (value.Contains("🐛") || value.Contains("fix") || value.Contains("bug") || value.Contains("regression") || value.Contains("error"))
+        {
+            return FeatureBucket.BugFix;
+        }
+
+        if (value.Contains("⚡") || value.Contains("improv") || value.Contains("enhanc") || value.Contains("performance") || value.Contains("faster") || value.Contains("optimiz"))
+        {
+            return FeatureBucket.Enhancement;
+        }
+
+        if (value.Contains("misc") || value.Contains("docs") || value.Contains("readme") || value.Contains("housekeeping") || value.Contains("chore"))
+        {
+            return FeatureBucket.Misc;
+        }
+
+        return FeatureBucket.TopFeature;
     }
 }

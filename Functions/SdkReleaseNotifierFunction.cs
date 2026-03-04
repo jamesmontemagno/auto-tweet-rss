@@ -62,14 +62,23 @@ public class SdkReleaseNotifierFunction
             // Process new entries (oldest first to maintain chronological order)
             foreach (var entry in newEntries.OrderBy(e => e.Updated))
             {
-                // Format the tweet as a thread
-                var thread = await _tweetFormatterService.FormatSdkThreadForXAsync(entry);
-                
-                _logger.LogInformation("Formatted SDK thread ({PostCount} posts, first {Length} chars):\n{Tweet}",
-                    thread.Count, thread[0].Length, thread[0]);
+                var usePremiumMode = IsEnabled("X_CLI_CHANGELOG_PREMIUM_MODE");
+                bool success;
 
-                // Post to Twitter as a thread
-                var success = await _twitterApiClient.PostTweetThreadAsync(thread);
+                if (usePremiumMode)
+                {
+                    var premiumPost = await _tweetFormatterService.FormatSdkPremiumPostForXAsync(entry);
+                    _logger.LogInformation("Formatted SDK premium post ({Length} chars):\n{Tweet}",
+                        premiumPost.Length, premiumPost);
+                    success = await _twitterApiClient.PostTweetAsync(premiumPost);
+                }
+                else
+                {
+                    var thread = await _tweetFormatterService.FormatSdkThreadForXAsync(entry);
+                    _logger.LogInformation("Formatted SDK thread ({PostCount} posts, first {Length} chars):\n{Tweet}",
+                        thread.Count, thread[0].Length, thread[0]);
+                    success = await _twitterApiClient.PostTweetThreadAsync(thread);
+                }
                 
                 if (success)
                 {
@@ -120,5 +129,16 @@ public class SdkReleaseNotifierFunction
         }
 
         return newEntries;
+    }
+
+    private static bool IsEnabled(string envVar)
+    {
+        var value = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return bool.TryParse(value, out var enabled) && enabled;
     }
 }

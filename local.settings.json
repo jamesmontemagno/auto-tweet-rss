@@ -26,6 +26,9 @@
     "AI_MODEL": "gpt-5-nano",
     "ENABLE_AI_SUMMARIES": "false",
 
+    "X_CLI_CHANGELOG_PREMIUM_MODE": "false",
+    "X_VSCODE_PREMIUM_MODE": "false",
+
     "THREAD_MAX_POSTS": "4",
     "THREAD_TOP_HIGHLIGHTS": "3"
   }
