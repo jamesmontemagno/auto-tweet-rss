@@ -1261,10 +1261,11 @@ public partial class TweetFormatterService
             }
         }
 
+        var featureLabel = totalCount == 1 ? "feature & enhancement" : "features & enhancements";
         var sb = new StringBuilder();
         sb.AppendLine(header);
         sb.AppendLine();
-        sb.AppendLine($"{totalCount} updates in one post");
+        sb.AppendLine($"{totalCount} {featureLabel} in this release");
 
         AppendSection(sb, "Top features", topFeatures, maxLength);
         AppendSection(sb, "Enhancements", enhancements, maxLength);
@@ -1310,10 +1311,11 @@ public partial class TweetFormatterService
         string hashtag,
         int maxLength)
     {
+        var featureLabel = totalCount == 1 ? "feature & enhancement" : "features & enhancements";
         var sb = new StringBuilder();
         sb.AppendLine(header);
         sb.AppendLine();
-        sb.AppendLine($"{totalCount} updates in one post");
+        sb.AppendLine($"{totalCount} {featureLabel} in this release");
 
         AppendSection(sb, "Top features", topFeatures, maxLength);
         AppendSection(sb, "Enhancements", enhancements, maxLength);
@@ -1350,19 +1352,13 @@ public partial class TweetFormatterService
 
     private static void AppendSection(StringBuilder sb, string title, IReadOnlyList<string> items, int maxLength)
     {
-        if (sb.Length >= maxLength - 32)
+        if (items.Count == 0 || sb.Length >= maxLength - 32)
         {
             return;
         }
 
         sb.AppendLine();
         sb.AppendLine($"{title}:");
-
-        if (items.Count == 0)
-        {
-            sb.AppendLine("- None this cycle");
-            return;
-        }
 
         foreach (var item in items)
         {
