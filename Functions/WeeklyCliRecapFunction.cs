@@ -83,17 +83,37 @@ public class WeeklyCliRecapFunction
 
             var improvementCount = weeklyEntries.Sum(e => CountImprovements(e.Content));
 
-            var thread = await _tweetFormatterService.FormatWeeklyCliRecapThreadAsync(
-                weeklyEntries,
-                weekStartPacific,
-                weekEndPacific,
-                improvementCount,
-                useAi: true);
+            var usePremiumMode = IsEnabled("X_CLI_CHANGELOG_PREMIUM_MODE");
+            bool success;
 
-            _logger.LogInformation("Formatted weekly recap thread ({PostCount} posts, first {Length} chars):\n{Tweet}",
-                thread.Count, thread[0].Length, thread[0]);
+            if (usePremiumMode)
+            {
+                var premiumPost = await _tweetFormatterService.FormatWeeklyCliRecapPremiumPostForXAsync(
+                    weeklyEntries,
+                    weekStartPacific,
+                    weekEndPacific,
+                    improvementCount,
+                    useAi: true);
 
-            var success = await _twitterApiClient.PostTweetThreadAsync(thread);
+                _logger.LogInformation("Formatted weekly recap premium post ({Length} chars):\n{Post}",
+                    premiumPost.Length, premiumPost);
+
+                success = await _twitterApiClient.PostTweetAsync(premiumPost);
+            }
+            else
+            {
+                var thread = await _tweetFormatterService.FormatWeeklyCliRecapThreadAsync(
+                    weeklyEntries,
+                    weekStartPacific,
+                    weekEndPacific,
+                    improvementCount,
+                    useAi: true);
+
+                _logger.LogInformation("Formatted weekly recap thread ({PostCount} posts, first {Length} chars):\n{Tweet}",
+                    thread.Count, thread[0].Length, thread[0]);
+
+                success = await _twitterApiClient.PostTweetThreadAsync(thread);
+            }
 
             if (success)
             {
@@ -158,5 +178,16 @@ public class WeeklyCliRecapFunction
         {
             return TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
         }
+    }
+
+    private static bool IsEnabled(string envVar)
+    {
+        var value = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return bool.TryParse(value, out var enabled) && enabled;
     }
 }

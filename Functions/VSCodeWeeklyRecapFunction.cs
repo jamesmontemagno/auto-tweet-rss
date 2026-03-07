@@ -91,12 +91,20 @@ public class VSCodeWeeklyRecapFunction
                     isThisWeek: true);
             }
 
-            var xThread = await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForXAsync(
-                featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
+            var useXPremiumMode = IsEnabled("X_VSCODE_PREMIUM_MODE");
+            IReadOnlyList<string> xThread = useXPremiumMode
+                ? new List<string>
+                {
+                    _tweetFormatterService.FormatVSCodeWeeklyRecapPremiumPostForX(
+                        notes.Features, featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl)
+                }
+                : await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForXAsync(
+                    featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
             var blueskyThread = await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForBlueskyAsync(
                 featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
 
-            _logger.LogInformation("Formatted VS Code weekly recap X thread ({PostCount} posts, first {Length} chars):\n{Post}",
+            _logger.LogInformation("Formatted VS Code weekly recap X {Mode} ({PostCount} posts, first {Length} chars):\n{Post}",
+                useXPremiumMode ? "premium post" : "thread",
                 xThread.Count, xThread[0].Length, xThread[0]);
             _logger.LogInformation("Formatted VS Code weekly recap Bluesky thread ({PostCount} posts, first {Length} chars):\n{Post}",
                 blueskyThread.Count, blueskyThread[0].Length, blueskyThread[0]);
@@ -133,5 +141,16 @@ public class VSCodeWeeklyRecapFunction
         {
             return TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
         }
+    }
+
+    private static bool IsEnabled(string envVar)
+    {
+        var value = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return bool.TryParse(value, out var enabled) && enabled;
     }
 }
