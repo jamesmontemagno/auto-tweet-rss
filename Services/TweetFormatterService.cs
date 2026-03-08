@@ -926,6 +926,71 @@ public partial class TweetFormatterService
         return AssembleThread(header, highlights, followUpGroups, totalCount, url, Hashtag, maxPostLength);
     }
 
+    /// <summary>Formats a CLI weekly recap as a single Premium X mega-post.</summary>
+    public async Task<string> FormatWeeklyCliRecapPremiumPostForXAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi = false)
+    {
+        var releaseCount = entries.Count;
+        var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
+        var releaseWord = releaseCount == 1 ? "release" : "releases";
+        var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
+        var header = string.Join("\n",
+            $"🗓️ Weekly recap ({dateRange})",
+            $"🚀 {releaseCount} {releaseWord}",
+            $"🛠️ {improvementCount} {improvementWord}");
+
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        PremiumPostPlan? premiumPlan = null;
+        ThreadPlan? threadPlan = null;
+
+        if (shouldUseAi && _releaseSummarizer != null)
+        {
+            try
+            {
+                var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
+                premiumPlan = await _releaseSummarizer.PlanPremiumPostAsync(
+                    "Copilot CLI weekly recap", combinedContent, "cli-weekly", MaxPremiumTweetLength);
+
+                if (premiumPlan == null)
+                {
+                    threadPlan = await _releaseSummarizer.PlanThreadAsync(
+                        "Copilot CLI weekly recap", combinedContent, "cli-weekly",
+                        MaxPremiumTweetLength, maxPosts: 1, topHighlights: Math.Max(GetTopHighlightsCount(), 5));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate AI premium post plan for CLI weekly recap, using fallback");
+            }
+        }
+
+        const string url = "https://github.com/github/copilot-cli/releases";
+
+        if (premiumPlan != null)
+        {
+            return BuildPremiumMegaPost(
+                header,
+                premiumPlan.TotalCount,
+                premiumPlan.TopFeatures,
+                premiumPlan.Enhancements,
+                premiumPlan.BugFixes,
+                premiumPlan.Misc,
+                url,
+                Hashtag,
+                MaxPremiumTweetLength);
+        }
+
+        var combinedForFallback = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
+        var rankedItems = threadPlan?.Items?.Count > 0 ? threadPlan.Items : ExtractFeatureList(combinedForFallback);
+        var totalCount = threadPlan?.TotalCount > 0 ? threadPlan.TotalCount : rankedItems.Count;
+
+        return BuildPremiumMegaPost(header, totalCount, rankedItems, url, Hashtag, MaxPremiumTweetLength);
+    }
+
     /// <summary>Formats a VS Code Insiders daily changelog as a thread for X/Twitter.</summary>
     public IReadOnlyList<string> FormatVSCodeChangelogThreadForX(
         string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url)
@@ -1007,6 +1072,65 @@ public partial class TweetFormatterService
         var header = $"🚀 Insiders Update - {dateLabel}\n{featureCount} new {featureWord} 🧵";
 
         return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength);
+    }
+
+    /// <summary>Formats a VS Code Insiders weekly recap as a single Premium X mega-post.</summary>
+    public string FormatVSCodeWeeklyRecapPremiumPostForX(
+        IReadOnlyList<VSCodeFeature> features,
+        int featureCount,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        string url)
+    {
+        var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
+        var featureWord = featureCount == 1 ? "feature" : "features";
+        var header = $"🗓️ Weekly recap ({dateRange})\n✨ {featureCount} new {featureWord}";
+
+        var topFeatures = new List<string>();
+        var enhancements = new List<string>();
+        var bugFixes = new List<string>();
+        var misc = new List<string>();
+
+        foreach (var feature in features)
+        {
+            var text = string.IsNullOrWhiteSpace(feature.Description)
+                ? feature.Title
+                : $"{feature.Title}: {feature.Description}";
+            text = text.Trim();
+            if (text.Length > 230)
+            {
+                text = text[..227] + "...";
+            }
+
+            var line = $"{GetEmojiForFeature(text)} {text}";
+            if (bugFixes.Count < 15 && ClassifyFeatureBucket(line) == FeatureBucket.BugFix)
+            {
+                bugFixes.Add(line);
+            }
+            else if (enhancements.Count < 20 && ClassifyFeatureBucket(line) == FeatureBucket.Enhancement)
+            {
+                enhancements.Add(line);
+            }
+            else if (topFeatures.Count < 20)
+            {
+                topFeatures.Add(line);
+            }
+            else
+            {
+                misc.Add(line);
+            }
+        }
+
+        return BuildPremiumMegaPost(
+            header,
+            featureCount,
+            topFeatures,
+            enhancements,
+            bugFixes,
+            misc,
+            url,
+            VSCodeHashtag,
+            MaxPremiumTweetLength);
     }
 
     /// <summary>Formats a VS Code Insiders weekly recap as a thread for X/Twitter.</summary>

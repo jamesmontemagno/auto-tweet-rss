@@ -81,12 +81,7 @@ public class TestWeeklyRecapFunction
 
             var improvementCount = weeklyEntries.Sum(e => CountImprovements(e.Content));
 
-            var thread = await _tweetFormatterService.FormatWeeklyCliRecapThreadAsync(
-                weeklyEntries,
-                weekStartPacific,
-                weekEndPacific,
-                improvementCount,
-                useAi: true);
+            var usePremiumMode = IsEnabled("X_CLI_CHANGELOG_PREMIUM_MODE");
 
             response.StatusCode = HttpStatusCode.OK;
             response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
@@ -94,15 +89,40 @@ public class TestWeeklyRecapFunction
             var output = $"Weekly window (PT): {weekStartPacific:yyyy-MM-dd} to {weekEndPacific:yyyy-MM-dd}\n";
             output += $"Releases: {weeklyEntries.Count}\n";
             output += $"Improvements: {improvementCount}\n";
-            output += $"\nThread Preview ({thread.Count} posts):\n";
-            output += "═══════════════════════════════════════\n";
-            for (var i = 0; i < thread.Count; i++)
+            output += $"Mode: {(usePremiumMode ? "premium" : "thread")}\n";
+
+            if (usePremiumMode)
             {
-                output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
-                output += thread[i];
-                if (i < thread.Count - 1)
+                var premiumPost = await _tweetFormatterService.FormatWeeklyCliRecapPremiumPostForXAsync(
+                    weeklyEntries,
+                    weekStartPacific,
+                    weekEndPacific,
+                    improvementCount,
+                    useAi: true);
+
+                output += $"\nPremium Post Preview ({premiumPost.Length} chars):\n";
+                output += "═══════════════════════════════════════\n";
+                output += premiumPost;
+            }
+            else
+            {
+                var thread = await _tweetFormatterService.FormatWeeklyCliRecapThreadAsync(
+                    weeklyEntries,
+                    weekStartPacific,
+                    weekEndPacific,
+                    improvementCount,
+                    useAi: true);
+
+                output += $"\nThread Preview ({thread.Count} posts):\n";
+                output += "═══════════════════════════════════════\n";
+                for (var i = 0; i < thread.Count; i++)
                 {
-                    output += "\n───────────────────────────────────────\n";
+                    output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
+                    output += thread[i];
+                    if (i < thread.Count - 1)
+                    {
+                        output += "\n───────────────────────────────────────\n";
+                    }
                 }
             }
 
@@ -207,24 +227,40 @@ public class TestWeeklyRecapFunction
                 isThisWeek: true);
         }
 
-        var thread = await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForXAsync(
-            featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
+        var useXPremiumMode = IsEnabled("X_VSCODE_PREMIUM_MODE");
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
 
         var output = $"Weekly window (PT): {weekStartDate:yyyy-MM-dd} to {weekEndDate:yyyy-MM-dd}\n";
         output += $"Features: {notes.Features.Count}\n";
-        output += $"Source: {notes.VersionUrl}\n\n";
-        output += $"Thread Preview ({thread.Count} posts):\n";
-        output += "═══════════════════════════════════════\n";
-        for (var i = 0; i < thread.Count; i++)
+        output += $"Source: {notes.VersionUrl}\n";
+        output += $"Mode: {(useXPremiumMode ? "premium" : "thread")}\n\n";
+
+        if (useXPremiumMode)
         {
-            output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
-            output += thread[i];
-            if (i < thread.Count - 1)
+            var premiumPost = _tweetFormatterService.FormatVSCodeWeeklyRecapPremiumPostForX(
+                notes.Features, featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl);
+
+            output += $"Premium Post Preview ({premiumPost.Length} chars):\n";
+            output += "═══════════════════════════════════════\n";
+            output += premiumPost;
+        }
+        else
+        {
+            var thread = await _tweetFormatterService.FormatVSCodeWeeklyRecapThreadForXAsync(
+                featureCount, weekStartOffset, weekEndOffset, notes.WebsiteUrl, GenerateSummary);
+
+            output += $"Thread Preview ({thread.Count} posts):\n";
+            output += "═══════════════════════════════════════\n";
+            for (var i = 0; i < thread.Count; i++)
             {
-                output += "\n───────────────────────────────────────\n";
+                output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
+                output += thread[i];
+                if (i < thread.Count - 1)
+                {
+                    output += "\n───────────────────────────────────────\n";
+                }
             }
         }
 
@@ -242,5 +278,16 @@ public class TestWeeklyRecapFunction
         {
             return TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
         }
+    }
+
+    private static bool IsEnabled(string envVar)
+    {
+        var value = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return bool.TryParse(value, out var enabled) && enabled;
     }
 }
