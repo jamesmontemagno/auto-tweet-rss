@@ -758,11 +758,11 @@ Return ALL items ranked by importance. Respond with JSON only. Example:
                     return null;
                 }
 
-                // Use AI's totalCount if provided, otherwise fall back to detected count
-                if (plan.TotalCount <= 0)
-                {
-                    plan.TotalCount = totalItemCount > 0 ? totalItemCount : plan.Items.Count;
-                }
+                // Use our detected count as the authoritative total — AI's self-reported totalCount
+                // can be inaccurate (e.g. overcounting prose sub-points as distinct items).
+                // Only fall back to the AI's count when our detection returned nothing.
+                plan.TotalCount = totalItemCount > 0 ? totalItemCount
+                    : (plan.TotalCount > 0 ? plan.TotalCount : plan.Items.Count);
 
                 _logger.LogInformation("Generated thread plan: {TotalCount} total, {ItemCount} ranked items for {FeedType}: {Title}",
                     plan.TotalCount, plan.Items.Count, feedType, releaseTitle);
@@ -893,10 +893,11 @@ Respond with JSON only. Example:
                     return null;
                 }
 
-                if (plan.TotalCount <= 0)
-                {
-                    plan.TotalCount = totalItemCount > 0 ? totalItemCount : itemCount;
-                }
+                // Use our detected count as the authoritative total — AI's self-reported totalCount
+                // can be inaccurate (e.g. overcounting prose sub-points as distinct items).
+                // Only fall back to the AI's count when our detection returned nothing.
+                plan.TotalCount = totalItemCount > 0 ? totalItemCount
+                    : (plan.TotalCount > 0 ? plan.TotalCount : itemCount);
 
                 _logger.LogInformation(
                     "Generated premium plan: total={TotalCount}, top={TopCount}, enh={EnhCount}, bugs={BugCount}, misc={MiscCount} for {FeedType}: {Title}",
