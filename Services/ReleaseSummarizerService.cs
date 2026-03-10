@@ -1110,37 +1110,32 @@ Requirements:
     {
         const int maxRetries = 3;
         var cleaned = PrepareContentForAi(releaseContent);
-        var prompt = $@"Summarize the given GitHub changelog entry using this format:
+        var prompt = $@"Summarize the given GitHub changelog entry.
 
-One thought or insight about the update.
-First key point - what's now possible (optional).
-Second key point - what devs can do now (optional).
-Third key point - technical detail (optional).
+    Output shape:
+    - Prefer ONE short sentence as the default output.
+    - Only use bullet points if there are multiple distinct takeaways worth scanning quickly.
+    - If you use bullets, use 2-3 bullets max, one per line, prefixed with •.
 
-Final statement or CTA with arrow → if appropriate
-
-STRICT RULES:
-- Total length MUST be less than {maxLength} characters. Don't cut off a sentence in the middle.
-- Use bullet points with •, no emoji, no hashtags, no paragraphs. Add a line break after each bullet.
-- NO emoji ever
-- NO hashtags ever
-- Arrow Unicode (→ ↓) allowed only for the CTA sentence, at the end of the sentence.
-- NO filler words
-- Instead of using ""and"" use + or &
-- Active voice only
-- Concise and direct
-- Simple words only
-- Shorten ""administrators"" to ""admins"", ""developers"" to ""devs"", ""organizations"" to ""orgs"", ""repositories"" to ""repos"", ""pull requests"" to ""PRs"", when helpful.
-- Shorten groups of words where possible.
-- Focus on what devs can do now + what's now possible
-- Implicit second person perspective
-- Use Oxford commas
-- NO em dashes
-- Do NOT mention or tag @GitHub
-- Use whitespace Unicode character (U+200B or similar) to prevent unwanted URL unfurling when needed
-- ONLY summarize what is in the existing content - do NOT make anything up or use outside information
-- NEVER include any preface or preamble
-- Return plain text only
+    STRICT RULES:
+    - Total length MUST be less than {maxLength} characters. Don't cut off a sentence in the middle.
+    - Keep wording concise, direct, and useful for devs.
+    - NO emoji ever
+    - NO hashtags ever
+    - NO filler words
+    - Instead of using ""and"" use + or & when natural
+    - Active voice only
+    - Simple words only
+    - Shorten ""administrators"" to ""admins"", ""developers"" to ""devs"", ""organizations"" to ""orgs"", ""repositories"" to ""repos"", ""pull requests"" to ""PRs"", when helpful.
+    - Focus on what devs can do now + what's now possible
+    - Implicit second person perspective
+    - Use Oxford commas
+    - NO em dashes
+    - Do NOT mention or tag @GitHub
+    - Use whitespace Unicode character (U+200B or similar) to prevent unwanted URL unfurling when needed
+    - ONLY summarize what is in the existing content - do NOT make anything up or use outside information
+    - NEVER include any preface or preamble
+    - Return plain text only
 
 Title:
 {releaseTitle}
@@ -1169,6 +1164,7 @@ Content:
                 var summary = StripCodeFences(response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty)
                     .Replace("\r\n", "\n", StringComparison.Ordinal)
                     .Trim();
+                summary = NormalizeGitHubChangelogSinglePostSummary(summary, maxLength);
 
                 if (string.IsNullOrWhiteSpace(summary))
                 {
@@ -1214,6 +1210,36 @@ Content:
         }
 
         return null;
+    }
+
+    private static string NormalizeGitHubChangelogSinglePostSummary(string summary, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            return string.Empty;
+        }
+
+        var lines = summary
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+
+        if (lines.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        // Prefer plain sentence output for single-point summaries.
+        if (lines.Count == 1 && lines[0].StartsWith("•", StringComparison.Ordinal))
+        {
+            lines[0] = lines[0].TrimStart('•', ' ', '\t').Trim();
+        }
+
+        var normalized = string.Join("\n", lines);
+        return XPostLengthHelper.FitsWithinLimit(normalized, maxLength)
+            ? normalized
+            : XPostLengthHelper.TruncateToWeightedLength(normalized, maxLength);
     }
 
     private static string StripCodeFences(string json)

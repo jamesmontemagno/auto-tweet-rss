@@ -67,10 +67,10 @@ public class GitHubChangelogNotifierFunction
             }
 
             _logger.LogInformation("Found {Count} new GitHub changelog entries.", newEntries.Count);
-
+            
+            var postingMode = GetPostingMode();
             foreach (var entry in newEntries.OrderBy(entry => entry.Updated))
             {
-                var postingMode = GetPostingMode();
                 bool success;
 
                 if (postingMode == GitHubChangelogPostingMode.Premium)
