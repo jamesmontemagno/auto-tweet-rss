@@ -8,7 +8,9 @@ public partial class TweetFormatterService
 {
     private const int GitHubChangelogThreadBuffer = 20;
     private const int GitHubChangelogMaxThreadPosts = 4;
-    private const int ThreadIndicatorReserve = 14;
+    private const int ThreadIndicatorReserve = 8;
+    private const int GitHubChangelogThreadParagraphMaxLength = 200;
+    private const int GitHubChangelogPremiumParagraphMaxLength = 420;
     private const string GitHubChangelogHashtag = "#GitHub";
     private const string GitHubCopilotHashtag = "#GitHubCopilot";
     private const string GitHubActionsHashtag = "#GitHubActions";
@@ -35,7 +37,7 @@ public partial class TweetFormatterService
     {
         var safeMaxPostLength = GetGitHubChangelogSafePostLength();
         var plan = await BuildGitHubChangelogSummaryPlanAsync(entry, premiumMode: false, useAi, isWeekly: false);
-        var header = $"📣 GitHub Changelog\n{TruncateForDisplay(entry.Title, 110)}";
+        var header = TruncateForDisplay(entry.Title, 110);
         var highlights = FitHighlightsForFirstPost(header, plan.TopThingsToKnow, safeMaxPostLength)
             .Select(item => $"• {SanitizeBullet(item)}")
             .ToList();
@@ -65,7 +67,7 @@ public partial class TweetFormatterService
         var plan = await BuildGitHubChangelogSummaryPlanAsync(entry, premiumMode: true, useAi, isWeekly: false);
         var hashtags = FormatGitHubChangelogHashtags(GetGitHubChangelogHashtags(entry));
         var text = BuildGitHubChangelogPremiumPost(
-            $"📣 GitHub Changelog: {entry.Title}",
+            entry.Title,
             entry.Link,
             hashtags,
             plan.TopThingsToKnow,
@@ -144,7 +146,7 @@ public partial class TweetFormatterService
             {
                 var plan = await _releaseSummarizer.PlanGitHubChangelogSummaryAsync(
                     entry.Title,
-                    entry.ContentHtml,
+                    BuildGitHubChangelogAiPayload(entry),
                     entry.SummaryText,
                     entry.Labels,
                     premiumMode,
@@ -173,10 +175,7 @@ public partial class TweetFormatterService
     {
         var title = $"GitHub Changelog weekly recap ({FormatDateRange(weekStartPacific, weekEndPacific)})";
         var combinedSummary = string.Join(" ", entries.Select(entry => entry.SummaryText));
-        var combinedContent = string.Join(
-            "\n\n",
-            entries.Select(entry =>
-                $"{entry.Title}\nLabels: {string.Join(", ", entry.Labels)}\n{entry.ContentHtml}"));
+        var combinedContent = string.Join("\n\n---\n\n", entries.Select(BuildGitHubChangelogAiPayload));
         var labels = entries.SelectMany(entry => entry.Labels).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
 
@@ -233,19 +232,19 @@ public partial class TweetFormatterService
         var cleanSummary = CollapseWhitespace(summaryText);
         if (!string.IsNullOrWhiteSpace(cleanSummary))
         {
-            paragraphs.Add(TruncateParagraph(cleanSummary, premiumMode ? 420 : 220));
+            paragraphs.Add(TruncateParagraph(cleanSummary, premiumMode ? GitHubChangelogPremiumParagraphMaxLength : GitHubChangelogThreadParagraphMaxLength));
         }
 
         if (features.Count > 0)
         {
             var labelText = labels.Count > 0 ? $" This update touches {string.Join(", ", labels.Take(3))}." : string.Empty;
             var highlights = string.Join(", ", features.Take(3));
-            paragraphs.Add(TruncateParagraph($"Key highlights include {highlights}.{labelText}", premiumMode ? 420 : 220));
+            paragraphs.Add(TruncateParagraph($"Key highlights include {highlights}.{labelText}", premiumMode ? GitHubChangelogPremiumParagraphMaxLength : GitHubChangelogThreadParagraphMaxLength));
         }
 
         if (paragraphs.Count == 0)
         {
-            paragraphs.Add(TruncateParagraph($"{title} introduces notable GitHub product updates with practical workflow improvements.", premiumMode ? 420 : 220));
+            paragraphs.Add(TruncateParagraph($"{title} introduces notable GitHub product updates with practical workflow improvements.", premiumMode ? GitHubChangelogPremiumParagraphMaxLength : GitHubChangelogThreadParagraphMaxLength));
         }
 
         return new ChangelogSummaryPlan
@@ -277,12 +276,12 @@ public partial class TweetFormatterService
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var paragraphs = new List<string>
         {
-            TruncateParagraph($"This week on GitHub ({dateRange}), {entries.Count} changelog updates shipped across {string.Join(", ", labels.DefaultIfEmpty("multiple product areas"))}.", premiumMode ? 420 : 220)
+            TruncateParagraph($"This week on GitHub ({dateRange}), {entries.Count} changelog updates shipped across {string.Join(", ", labels.DefaultIfEmpty("multiple product areas"))}.", premiumMode ? GitHubChangelogPremiumParagraphMaxLength : GitHubChangelogThreadParagraphMaxLength)
         };
 
         if (topTitles.Count > 0)
         {
-            paragraphs.Add(TruncateParagraph($"Standout updates included {string.Join(", ", topTitles.Take(3))}.", premiumMode ? 420 : 220));
+            paragraphs.Add(TruncateParagraph($"Standout updates included {string.Join(", ", topTitles.Take(3))}.", premiumMode ? GitHubChangelogPremiumParagraphMaxLength : GitHubChangelogThreadParagraphMaxLength));
         }
 
         return new ChangelogSummaryPlan
@@ -305,6 +304,48 @@ public partial class TweetFormatterService
             .Take(2)
             .Select(item => item.Url)
             .ToList();
+    }
+
+    private static string BuildGitHubChangelogAiPayload(GitHubChangelogEntry entry)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Title: {entry.Title}");
+        sb.AppendLine($"Link: {entry.Link}");
+        sb.AppendLine($"Updated: {entry.Updated:O}");
+        sb.AppendLine($"Changelog Type: {entry.ChangelogType}");
+        sb.AppendLine($"Labels: {(entry.Labels.Count > 0 ? string.Join(", ", entry.Labels) : "none")}");
+
+        if (entry.Media.Count > 0)
+        {
+            sb.AppendLine("Media:");
+            foreach (var media in entry.Media)
+            {
+                sb.AppendLine($"- {media.MediaType}: {media.Url}");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.SummaryText))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Summary Text:");
+            sb.AppendLine(entry.SummaryText);
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ContentText))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Content Text:");
+            sb.AppendLine(entry.ContentText);
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ContentHtml))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Content HTML:");
+            sb.AppendLine(entry.ContentHtml);
+        }
+
+        return sb.ToString().Trim();
     }
 
     private static int GetGitHubChangelogSafePostLength()

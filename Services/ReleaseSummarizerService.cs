@@ -982,10 +982,14 @@ Content:
 
 Requirements:
 - Return JSON only
-- Produce 3-5 short bullet highlights under topThingsToKnow
+- Produce 2-4 short bullet highlights under topThingsToKnow
 - Produce 1-2 concise paragraphs under paragraphs
 - Bullets should be plain text without bullet characters
+- Keep bullets very short: prefer 20-55 characters, fragments over full sentences
+- Do not repeat or closely paraphrase the changelog title; assume the title is already shown in the post header
+- Focus each bullet on a distinct capability, change, or outcome
 - Paragraphs should explain what changed and why it matters
+- {(premiumMode ? "Premium paragraphs can use richer detail, but still stay concise." : "Each paragraph must stay under 200 characters for thread follow-up posts.")}
 - Never include URLs, hashtags, usernames, issue numbers, or markdown headings
 - Keep wording concrete and helpful for developers
 - {(premiumMode ? "Use slightly richer detail because this can be a Premium X post." : "Keep paragraphs concise enough to fit a social thread follow-up post.")}
@@ -1038,8 +1042,11 @@ Requirements:
                 plan.TopThingsToKnow = plan.TopThingsToKnow
                     .Select(item => item.Trim())
                     .Where(item => !string.IsNullOrWhiteSpace(item))
+                    .Select(ShortenGitHubChangelogBullet)
+                    .Where(item => !string.IsNullOrWhiteSpace(item))
+                    .Where(item => !LooksLikeTitleEcho(item, releaseTitle))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .Take(5)
+                    .Take(4)
                     .ToList();
 
                 plan.Paragraphs = plan.Paragraphs
@@ -1183,10 +1190,54 @@ JSON schema:
 
 Rules:
 - topThingsToKnow must contain short, high-signal bullets with no leading bullet characters
+- Keep topThingsToKnow compact and scannable; aim for 20-55 characters when possible
+- Do not repeat or paraphrase the release title in topThingsToKnow; the title is already shown separately
+- Prefer concrete capability/outcome phrases over complete sentences
 - paragraphs must be concise plain-text paragraphs
+- For non-premium/threaded output, paragraphs should stay under 200 characters
 - Never include links, hashtags, usernames, issue numbers, or markdown headings
 - Focus on product impact, workflows, and why the update matters
 - Avoid hype and repetition";
+
+    private static string ShortenGitHubChangelogBullet(string bullet)
+    {
+        var clean = Regex.Replace(bullet, @"\s+", " ").Trim();
+        return clean.Length <= 55
+            ? clean
+            : clean[..52].TrimEnd(' ', ',', ';', ':', '-', '.', '!', '?') + "...";
+    }
+
+    private static bool LooksLikeTitleEcho(string bullet, string releaseTitle)
+    {
+        var normalizedBullet = NormalizeForComparison(bullet);
+        var normalizedTitle = NormalizeForComparison(releaseTitle);
+
+        if (string.IsNullOrEmpty(normalizedBullet) || string.IsNullOrEmpty(normalizedTitle))
+        {
+            return false;
+        }
+
+        if (normalizedTitle.Contains(normalizedBullet, StringComparison.Ordinal) ||
+            normalizedBullet.Contains(normalizedTitle, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var bulletWords = normalizedBullet.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var titleWords = normalizedTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (bulletWords.Length == 0 || titleWords.Length == 0)
+        {
+            return false;
+        }
+
+        var titleWordSet = titleWords.ToHashSet(StringComparer.Ordinal);
+        var overlapCount = bulletWords.Count(titleWordSet.Contains);
+        return overlapCount >= Math.Max(2, bulletWords.Length - 1);
+    }
+
+    private static string NormalizeForComparison(string value)
+        => Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", " ").Trim();
 }
 
 /// <summary>
