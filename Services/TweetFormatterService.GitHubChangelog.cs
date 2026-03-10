@@ -6,6 +6,9 @@ namespace AutoTweetRss.Services;
 
 public partial class TweetFormatterService
 {
+    private const int GitHubChangelogThreadBuffer = 20;
+    private const int GitHubChangelogMaxThreadPosts = 4;
+    private const int ThreadIndicatorReserve = 14;
     private const string GitHubChangelogHashtag = "#GitHub";
     private const string GitHubCopilotHashtag = "#GitHubCopilot";
     private const string GitHubActionsHashtag = "#GitHubActions";
@@ -30,18 +33,22 @@ public partial class TweetFormatterService
         GitHubChangelogEntry entry,
         bool useAi = false)
     {
+        var safeMaxPostLength = GetGitHubChangelogSafePostLength();
         var plan = await BuildGitHubChangelogSummaryPlanAsync(entry, premiumMode: false, useAi, isWeekly: false);
         var header = $"📣 GitHub Changelog\n{TruncateForDisplay(entry.Title, 110)}";
+        var highlights = FitHighlightsForFirstPost(header, plan.TopThingsToKnow, safeMaxPostLength)
+            .Select(item => $"• {SanitizeBullet(item)}")
+            .ToList();
         var hashtags = FormatGitHubChangelogHashtags(GetGitHubChangelogHashtags(entry));
-        var bodyPosts = PackParagraphsIntoPosts(plan.Paragraphs, MaxTweetLength);
-        var posts = AssembleThread(
+        var maxBodyPosts = GitHubChangelogMaxThreadPosts - 2;
+        var bodyPosts = PackParagraphsIntoPosts(plan.Paragraphs, safeMaxPostLength, maxBodyPosts);
+        var posts = AssembleGitHubChangelogThread(
             header,
-            plan.TopThingsToKnow.Select(item => $"• {SanitizeBullet(item)}").ToList(),
+            highlights,
             bodyPosts,
-            plan.TopThingsToKnow.Count,
             entry.Link,
             hashtags,
-            MaxTweetLength);
+            safeMaxPostLength);
 
         var preferredMedia = SelectPreferredMedia(entry);
         return posts
@@ -82,16 +89,19 @@ public partial class TweetFormatterService
         var plan = await BuildGitHubChangelogWeeklySummaryPlanAsync(entries, weekStartPacific, weekEndPacific, premiumMode: false, useAi);
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var header = $"🗓️ GitHub weekly recap ({dateRange})\n📌 {entries.Count} updates this week";
+        var safeMaxPostLength = GetGitHubChangelogSafePostLength();
+        var highlights = FitHighlightsForFirstPost(header, plan.TopThingsToKnow, safeMaxPostLength)
+            .Select(item => $"• {SanitizeBullet(item)}")
+            .ToList();
         var hashtags = FormatGitHubChangelogHashtags(GetGitHubChangelogHashtags(entries));
-        var bodyPosts = PackParagraphsIntoPosts(plan.Paragraphs, MaxTweetLength);
-        var posts = AssembleThread(
+        var bodyPosts = PackParagraphsIntoPosts(plan.Paragraphs, safeMaxPostLength);
+        var posts = AssembleGitHubChangelogThread(
             header,
-            plan.TopThingsToKnow.Select(item => $"• {SanitizeBullet(item)}").ToList(),
+            highlights,
             bodyPosts,
-            entries.Count,
             "https://github.blog/changelog/",
             hashtags,
-            MaxTweetLength);
+            safeMaxPostLength);
 
         return posts.Select(text => new SocialMediaPost(text)).ToList();
     }
@@ -297,9 +307,113 @@ public partial class TweetFormatterService
             .ToList();
     }
 
-    private static IReadOnlyList<string> PackParagraphsIntoPosts(IReadOnlyList<string> paragraphs, int maxPostLength)
+    private static int GetGitHubChangelogSafePostLength()
+        => Math.Max(200, MaxTweetLength - GitHubChangelogThreadBuffer);
+
+    private static IReadOnlyList<string> AssembleGitHubChangelogThread(
+        string header,
+        IReadOnlyList<string> highlights,
+        IReadOnlyList<string> followUpPosts,
+        string link,
+        string hashtags,
+        int maxPostLength)
     {
         var posts = new List<string>();
+        const string leadIn = "🧵 See thread below 👇";
+
+        var highlightBlock = highlights.Count > 0 ? string.Join("\n", highlights) : string.Empty;
+        var firstPost = string.IsNullOrEmpty(highlightBlock)
+            ? $"{header}\n\n{leadIn}"
+            : $"{header}\n\n{highlightBlock}\n\n{leadIn}";
+
+        posts.Add(EnsurePostFits(firstPost, maxPostLength));
+        posts.AddRange(followUpPosts.Select(post => EnsurePostFits(post, maxPostLength)));
+
+        var lastPostContent = $"{link}\n\n{hashtags}";
+        if (posts.Count >= 2)
+        {
+            var prevIndex = posts.Count - 1;
+            var merged = $"{posts[prevIndex]}\n\n{lastPostContent}";
+            if (XPostLengthHelper.FitsWithinLimit(merged, maxPostLength))
+            {
+                posts[prevIndex] = merged;
+            }
+            else
+            {
+                posts.Add(EnsurePostFits(lastPostContent, maxPostLength));
+            }
+        }
+        else
+        {
+            posts.Add(EnsurePostFits(lastPostContent, maxPostLength));
+        }
+
+        for (var index = 0; index < posts.Count; index++)
+        {
+            var indicator = $"🧵 {index + 1}/{posts.Count}";
+            var withIndicator = $"{posts[index]}\n\n{indicator}";
+            if (XPostLengthHelper.FitsWithinLimit(withIndicator, maxPostLength))
+            {
+                posts[index] = withIndicator;
+                continue;
+            }
+
+            var availableForContent = maxPostLength - XPostLengthHelper.GetWeightedLength($"\n\n{indicator}");
+            if (availableForContent > 0)
+            {
+                posts[index] = $"{XPostLengthHelper.TruncateToWeightedLength(posts[index], availableForContent)}\n\n{indicator}";
+            }
+        }
+
+        return posts;
+    }
+
+    private static string EnsurePostFits(string text, int maxPostLength)
+        => XPostLengthHelper.FitsWithinLimit(text, maxPostLength)
+            ? text
+            : XPostLengthHelper.TruncateToWeightedLength(text, maxPostLength);
+
+    private static IReadOnlyList<string> FitHighlightsForFirstPost(
+        string header,
+        IReadOnlyList<string> highlights,
+        int maxPostLength)
+    {
+        if (highlights.Count == 0)
+        {
+            return [];
+        }
+
+        const string leadIn = "🧵 See thread below 👇";
+        var safeMaxLength = Math.Max(80, maxPostLength - ThreadIndicatorReserve);
+        var fittedHighlights = new List<string>();
+
+        foreach (var highlight in highlights)
+        {
+            var sanitizedHighlight = SanitizeBullet(highlight);
+            var candidateHighlights = fittedHighlights
+                .Append($"• {sanitizedHighlight}")
+                .ToList();
+            var highlightBlock = string.Join("\n", candidateHighlights);
+            var candidate = $"{header}\n\n{highlightBlock}\n\n{leadIn}";
+
+            if (!XPostLengthHelper.FitsWithinLimit(candidate, safeMaxLength))
+            {
+                break;
+            }
+
+            fittedHighlights.Add(sanitizedHighlight);
+        }
+
+        return fittedHighlights;
+    }
+
+    private static IReadOnlyList<string> PackParagraphsIntoPosts(
+        IReadOnlyList<string> paragraphs,
+        int maxPostLength,
+        int? maxPosts = null)
+    {
+        var posts = new List<string>();
+        var safeMaxLength = Math.Max(80, maxPostLength - ThreadIndicatorReserve);
 
         foreach (var paragraph in paragraphs)
         {
@@ -309,7 +423,7 @@ public partial class TweetFormatterService
                 continue;
             }
 
-            if (cleanParagraph.Length <= maxPostLength)
+            if (XPostLengthHelper.FitsWithinLimit(cleanParagraph, safeMaxLength))
             {
                 posts.Add(cleanParagraph);
                 continue;
@@ -319,7 +433,7 @@ public partial class TweetFormatterService
             foreach (var sentence in SplitIntoSentences(cleanParagraph))
             {
                 var candidate = current.Length == 0 ? sentence : $"{current} {sentence}";
-                if (candidate.Length <= maxPostLength)
+                if (XPostLengthHelper.FitsWithinLimit(candidate, safeMaxLength))
                 {
                     current.Clear();
                     current.Append(candidate);
@@ -332,13 +446,21 @@ public partial class TweetFormatterService
                     current.Clear();
                 }
 
-                posts.Add(TruncateParagraph(sentence, maxPostLength));
+                posts.Add(TruncateParagraph(sentence, safeMaxLength));
             }
 
             if (current.Length > 0)
             {
                 posts.Add(current.ToString());
             }
+        }
+
+        if (maxPosts.HasValue && posts.Count > maxPosts.Value)
+        {
+            var trimmedPosts = posts.Take(maxPosts.Value - 1).ToList();
+            var remainingContent = string.Join(" ", posts.Skip(maxPosts.Value - 1));
+            trimmedPosts.Add(TruncateParagraph(remainingContent, safeMaxLength));
+            return trimmedPosts;
         }
 
         return posts;
@@ -376,9 +498,9 @@ public partial class TweetFormatterService
         sb.Append(hashtags);
 
         var text = sb.ToString().Trim();
-        return text.Length <= MaxPremiumTweetLength
+        return XPostLengthHelper.FitsWithinLimit(text, MaxPremiumTweetLength)
             ? text
-            : text[..(MaxPremiumTweetLength - 3)] + "...";
+            : XPostLengthHelper.TruncateToWeightedLength(text, MaxPremiumTweetLength);
     }
 
     private static string FormatGitHubChangelogHashtags(IReadOnlyList<string> hashtags)
@@ -437,12 +559,12 @@ public partial class TweetFormatterService
     private static string TruncateParagraph(string text, int maxLength)
     {
         var clean = CollapseWhitespace(text);
-        if (clean.Length <= maxLength)
+        if (XPostLengthHelper.FitsWithinLimit(clean, maxLength))
         {
             return clean;
         }
 
-        return clean[..(maxLength - 3)].TrimEnd() + "...";
+        return XPostLengthHelper.TruncateToWeightedLength(clean, maxLength);
     }
 
     private static string TruncateSentence(string text)
@@ -450,12 +572,12 @@ public partial class TweetFormatterService
 
     private static string TruncateForDisplay(string text, int maxLength)
     {
-        if (string.IsNullOrWhiteSpace(text) || text.Length <= maxLength)
+        if (string.IsNullOrWhiteSpace(text) || XPostLengthHelper.FitsWithinLimit(text, maxLength))
         {
             return text.Trim();
         }
 
-        return text[..(maxLength - 3)].TrimEnd() + "...";
+        return XPostLengthHelper.TruncateToWeightedLength(text, maxLength);
     }
 
     private static string CollapseWhitespace(string text)
