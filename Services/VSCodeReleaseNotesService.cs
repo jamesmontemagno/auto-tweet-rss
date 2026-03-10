@@ -501,7 +501,8 @@ public partial class VSCodeReleaseNotesService
 
     /// <summary>
     /// Gets candidate raw-GitHub markdown URLs by resolving the aka.ms redirect
-    /// to discover the current version, then trying that version and the previous one.
+    /// to discover the current version, then trying that version, the next version
+    /// (in case the redirect has already advanced to the production release), and the previous one.
     /// Falls back to date-based calculation if the redirect fails.
     /// </summary>
     private async Task<IReadOnlyList<string>> GetCandidateMarkdownUrlsAsync(DateTime targetDate)
@@ -510,8 +511,11 @@ public partial class VSCodeReleaseNotesService
 
         if (currentVersion.HasValue)
         {
+            // Include currentVersion+1 in case the aka.ms redirect has advanced to the
+            // production release and the real Insiders notes are already one version ahead.
             var urls = new List<string>
             {
+                $"{RawGitHubBaseUrl}v1_{currentVersion.Value + 1}.md",
                 $"{RawGitHubBaseUrl}v1_{currentVersion.Value}.md",
                 $"{RawGitHubBaseUrl}v1_{currentVersion.Value - 1}.md"
             };
