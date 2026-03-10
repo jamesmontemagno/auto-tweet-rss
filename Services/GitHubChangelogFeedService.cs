@@ -1,14 +1,35 @@
 using System.ServiceModel.Syndication;
+using System.Text.RegularExpressions;
 using System.Xml;
 using Microsoft.Extensions.Logging;
 
 namespace AutoTweetRss.Services;
 
-public class GitHubChangelogFeedService
+public partial class GitHubChangelogFeedService
 {
     private const string FeedUrl = "https://github.blog/changelog/feed/";
+    private const string ContentNamespace = "http://purl.org/rss/1.0/modules/content/";
+
     private readonly ILogger<GitHubChangelogFeedService> _logger;
     private readonly HttpClient _httpClient;
+
+    [GeneratedRegex(@"<p>\s*The post .*?appeared first on.*?</p>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex WordPressFooterPattern();
+
+    [GeneratedRegex(@"<video[^>]*\bsrc=""([^""]+)""", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex VideoPattern();
+
+    [GeneratedRegex(@"<source[^>]*\btype=""video/[^""]+""[^>]*\bsrc=""([^""]+)""", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex VideoSourcePattern();
+
+    [GeneratedRegex(@"<img[^>]*\bsrc=""([^""]+)""", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex ImagePattern();
+
+    [GeneratedRegex(@"<[^>]+>", RegexOptions.Compiled)]
+    private static partial Regex HtmlTagPattern();
+
+    [GeneratedRegex(@"\s+", RegexOptions.Compiled)]
+    private static partial Regex WhitespacePattern();
 
     public GitHubChangelogFeedService(
         ILogger<GitHubChangelogFeedService> logger,
@@ -18,14 +39,8 @@ public class GitHubChangelogFeedService
         _httpClient = httpClientFactory.CreateClient();
     }
 
-    public async Task<string> FindCopilotDescriptionForUrlAsync(string url, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<GitHubChangelogEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
     {
-        var normalizedTarget = NormalizeUrlForCompare(url);
-        if (string.IsNullOrEmpty(normalizedTarget))
-        {
-            return string.Empty;
-        }
-
         try
         {
             _logger.LogInformation("Fetching GitHub changelog feed");
@@ -37,65 +52,162 @@ public class GitHubChangelogFeedService
             if (feed == null)
             {
                 _logger.LogWarning("GitHub changelog feed returned no items");
-                return string.Empty;
+                return [];
             }
 
-            FeedMatch? newestMatch = null;
+            var entries = feed.Items
+                .Select(CreateEntry)
+                .Where(entry => entry != null)
+                .Cast<GitHubChangelogEntry>()
+                .OrderByDescending(entry => entry.Updated)
+                .ToList();
 
-            foreach (var item in feed.Items)
-            {
-                var link = item.Links.FirstOrDefault()?.Uri?.ToString() ?? string.Empty;
-                if (string.IsNullOrEmpty(link))
-                {
-                    continue;
-                }
-
-                var normalizedLink = NormalizeUrlForCompare(link);
-                if (!string.Equals(normalizedLink, normalizedTarget, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (!HasCopilotLabel(item))
-                {
-                    continue;
-                }
-
-                var updated = item.LastUpdatedTime != default ? item.LastUpdatedTime : item.PublishDate;
-                var description = item.Summary?.Text
-                    ?? (item.Content as TextSyndicationContent)?.Text
-                    ?? string.Empty;
-
-                if (newestMatch == null || updated > newestMatch.Updated)
-                {
-                    newestMatch = new FeedMatch(updated, description);
-                }
-            }
-
-            return newestMatch?.Description ?? string.Empty;
+            _logger.LogInformation("Parsed {Count} GitHub changelog entries", entries.Count);
+            return entries;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching GitHub changelog feed");
-            return string.Empty;
+            return [];
         }
     }
 
-    private static bool HasCopilotLabel(SyndicationItem item)
+    public async Task<string> FindCopilotDescriptionForUrlAsync(string url, CancellationToken cancellationToken)
     {
-        foreach (var category in item.Categories)
+        var normalizedTarget = NormalizeUrlForCompare(url);
+        if (string.IsNullOrEmpty(normalizedTarget))
         {
-            var name = category.Name ?? string.Empty;
-            var label = category.Label ?? string.Empty;
+            return string.Empty;
+        }
 
-            if (name.Contains("copilot", StringComparison.OrdinalIgnoreCase) ||
-                label.Contains("copilot", StringComparison.OrdinalIgnoreCase))
+        var entries = await GetEntriesAsync(cancellationToken);
+        var match = entries
+            .Where(entry => string.Equals(NormalizeUrlForCompare(entry.Link), normalizedTarget, StringComparison.OrdinalIgnoreCase))
+            .Where(entry => entry.Labels.Any(label => label.Contains("copilot", StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(entry => entry.Updated)
+            .FirstOrDefault();
+
+        return match?.SummaryText ?? string.Empty;
+    }
+
+    private GitHubChangelogEntry? CreateEntry(SyndicationItem item)
+    {
+        var link = item.Links.FirstOrDefault()?.Uri?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(link))
+        {
+            return null;
+        }
+
+        var contentHtml = GetEncodedContent(item);
+        var summaryHtml = item.Summary?.Text ?? string.Empty;
+        var normalizedContent = RemoveWordPressFooter(contentHtml);
+        var normalizedSummary = RemoveWordPressFooter(summaryHtml);
+        var media = ExtractMedia(normalizedContent);
+        var updated = item.LastUpdatedTime != default ? item.LastUpdatedTime : item.PublishDate;
+        var labels = item.Categories
+            .Select(category => category.Name ?? category.Label ?? string.Empty)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new GitHubChangelogEntry
+        {
+            Id = item.Id ?? link,
+            Title = item.Title?.Text?.Trim() ?? string.Empty,
+            Link = link,
+            SummaryHtml = normalizedSummary,
+            SummaryText = StripHtml(normalizedSummary),
+            ContentHtml = normalizedContent,
+            ContentText = StripHtml(normalizedContent),
+            Labels = labels,
+            Updated = updated,
+            ChangelogType = item.Categories
+                .FirstOrDefault(category => string.Equals(category.Scheme, "changelog-type", StringComparison.OrdinalIgnoreCase))
+                ?.Name ?? string.Empty,
+            Media = media
+        };
+    }
+
+    private static string GetEncodedContent(SyndicationItem item)
+    {
+        try
+        {
+            var content = item.ElementExtensions.ReadElementExtensions<string>("encoded", ContentNamespace);
+            if (content.Count > 0)
             {
-                return true;
+                return content[0] ?? string.Empty;
+            }
+        }
+        catch
+        {
+        }
+
+        return item.Summary?.Text ?? string.Empty;
+    }
+
+    private static List<GitHubChangelogMediaItem> ExtractMedia(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return [];
+        }
+
+        var media = new List<GitHubChangelogMediaItem>();
+
+        foreach (Match match in VideoSourcePattern().Matches(html))
+        {
+            var url = match.Groups[1].Value;
+            if (Uri.TryCreate(url, UriKind.Absolute, out _))
+            {
+                media.Add(new GitHubChangelogMediaItem(url, GitHubChangelogMediaType.Video));
             }
         }
 
-        return false;
+        foreach (Match match in VideoPattern().Matches(html))
+        {
+            var url = match.Groups[1].Value;
+            if (Uri.TryCreate(url, UriKind.Absolute, out _))
+            {
+                media.Add(new GitHubChangelogMediaItem(url, GitHubChangelogMediaType.Video));
+            }
+        }
+
+        foreach (Match match in ImagePattern().Matches(html))
+        {
+            var url = match.Groups[1].Value;
+            if (Uri.TryCreate(url, UriKind.Absolute, out _) &&
+                !url.Contains("favicon", StringComparison.OrdinalIgnoreCase) &&
+                !url.Contains("emoji", StringComparison.OrdinalIgnoreCase))
+            {
+                media.Add(new GitHubChangelogMediaItem(url, GitHubChangelogMediaType.Image));
+            }
+        }
+
+        return media
+            .GroupBy(item => item.Url, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+    }
+
+    private static string RemoveWordPressFooter(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return string.Empty;
+        }
+
+        return WordPressFooterPattern().Replace(html, string.Empty).Trim();
+    }
+
+    private static string StripHtml(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return string.Empty;
+        }
+
+        var withoutTags = HtmlTagPattern().Replace(System.Net.WebUtility.HtmlDecode(html), " ");
+        return WhitespacePattern().Replace(withoutTags, " ").Trim();
     }
 
     private static string NormalizeUrlForCompare(string url)
@@ -127,6 +239,27 @@ public class GitHubChangelogFeedService
 
         return $"{scheme}://{host}{portPart}{builder.Path}";
     }
+}
 
-    private sealed record FeedMatch(DateTimeOffset Updated, string Description);
+public sealed class GitHubChangelogEntry
+{
+    public required string Id { get; set; }
+    public required string Title { get; set; }
+    public required string Link { get; set; }
+    public required string SummaryHtml { get; set; }
+    public required string SummaryText { get; set; }
+    public required string ContentHtml { get; set; }
+    public required string ContentText { get; set; }
+    public required IReadOnlyList<string> Labels { get; set; }
+    public required IReadOnlyList<GitHubChangelogMediaItem> Media { get; set; }
+    public required string ChangelogType { get; set; }
+    public DateTimeOffset Updated { get; set; }
+}
+
+public sealed record GitHubChangelogMediaItem(string Url, GitHubChangelogMediaType MediaType);
+
+public enum GitHubChangelogMediaType
+{
+    Image,
+    Video
 }
