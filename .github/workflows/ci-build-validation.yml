@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOTNET_VERSION: '10.0.3'
+  DOTNET_VERSION: '10.0.103'
   CONFIGURATION: Release
 
 jobs:
