@@ -36,7 +36,7 @@ public class OAuth1Helper
             && !string.IsNullOrEmpty(_accessTokenSecret);
     }
 
-    public string GenerateAuthorizationHeader(string httpMethod, string url)
+    public string GenerateAuthorizationHeader(string httpMethod, string url, IEnumerable<KeyValuePair<string, string>>? extraParameters = null)
     {
         if (!IsConfigured)
         {
@@ -55,6 +55,14 @@ public class OAuth1Helper
             { "oauth_token", _accessToken! },
             { "oauth_version", "1.0" }
         };
+
+        if (extraParameters != null)
+        {
+            foreach (var parameter in extraParameters)
+            {
+                oauthParams[parameter.Key] = parameter.Value;
+            }
+        }
 
         // Create signature base string
         var parameterString = string.Join("&", 

@@ -957,6 +957,144 @@ Respond with JSON only. Example:
         return null;
     }
 
+    public async Task<ChangelogSummaryPlan?> PlanGitHubChangelogSummaryAsync(
+        string releaseTitle,
+        string releaseContent,
+        string summaryText,
+        IReadOnlyList<string> labels,
+        bool premiumMode,
+        bool isWeekly,
+        CancellationToken cancellationToken = default)
+    {
+        const int maxRetries = 3;
+        var cleaned = PrepareContentForAi($"{summaryText}\n\n{releaseContent}");
+        var labelText = labels.Count > 0 ? string.Join(", ", labels) : "none";
+        var prompt = $@"Create a social post plan for this GitHub Changelog {(isWeekly ? "weekly recap" : "entry")}: {releaseTitle}
+
+Labels:
+{labelText}
+
+Summary:
+{summaryText}
+
+Content:
+{cleaned}
+
+Requirements:
+- Return JSON only
+- Produce 3-5 short bullet highlights under topThingsToKnow
+- Produce 1-2 concise paragraphs under paragraphs
+- Bullets should be plain text without bullet characters
+- Paragraphs should explain what changed and why it matters
+- Never include URLs, hashtags, usernames, issue numbers, or markdown headings
+- Keep wording concrete and helpful for developers
+- {(premiumMode ? "Use slightly richer detail because this can be a Premium X post." : "Keep paragraphs concise enough to fit a social thread follow-up post.")}
+- {(isWeekly ? "Synthesize themes across the week instead of repeating every title." : "Focus on the single changelog entry and its key takeaways.")}";
+
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
+        {
+            new(ChatRole.System, GetGitHubChangelogSystemPrompt()),
+            new(ChatRole.User, prompt)
+        };
+
+        var options = new ChatOptions
+        {
+            ResponseFormat = ChatResponseFormat.Json
+        };
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Requesting GitHub changelog AI plan for {Title} (attempt {Attempt}/{MaxRetries}, premium={PremiumMode}, weekly={IsWeekly})",
+                    releaseTitle, attempt, maxRetries, premiumMode, isWeekly);
+
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
+
+                var response = await _chatClient.GetResponseAsync(messages, options, timeoutCts.Token);
+                var json = StripCodeFences(response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty);
+
+                var plan = System.Text.Json.JsonSerializer.Deserialize<ChangelogSummaryPlan>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (plan == null)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                plan.TopThingsToKnow ??= [];
+                plan.Paragraphs ??= [];
+
+                plan.TopThingsToKnow = plan.TopThingsToKnow
+                    .Select(item => item.Trim())
+                    .Where(item => !string.IsNullOrWhiteSpace(item))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(5)
+                    .ToList();
+
+                plan.Paragraphs = plan.Paragraphs
+                    .Select(paragraph => paragraph.Trim())
+                    .Where(paragraph => !string.IsNullOrWhiteSpace(paragraph))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(2)
+                    .ToList();
+
+                if (plan.TopThingsToKnow.Count == 0 && plan.Paragraphs.Count == 0)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                return plan;
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex,
+                    "Timed out generating GitHub changelog AI plan for {Title} (attempt {Attempt}/{MaxRetries}).",
+                    releaseTitle, attempt, maxRetries);
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error generating GitHub changelog AI plan for {Title} (attempt {Attempt}/{MaxRetries}).",
+                    releaseTitle, attempt, maxRetries);
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     private static string StripCodeFences(string json)
     {
         if (!json.StartsWith("```", StringComparison.Ordinal))
@@ -1032,6 +1170,23 @@ JSON schema:
   ""bugFixes"": string[],
   ""misc"": string[]
 }";
+
+    private static string GetGitHubChangelogSystemPrompt() => @"You are an expert at turning GitHub changelog content into polished social post plans.
+
+You MUST respond with valid JSON only and no markdown fences.
+
+JSON schema:
+{
+  ""topThingsToKnow"": string[],
+  ""paragraphs"": string[]
+}
+
+Rules:
+- topThingsToKnow must contain short, high-signal bullets with no leading bullet characters
+- paragraphs must be concise plain-text paragraphs
+- Never include links, hashtags, usernames, issue numbers, or markdown headings
+- Focus on product impact, workflows, and why the update matters
+- Avoid hype and repetition";
 }
 
 /// <summary>
@@ -1053,4 +1208,10 @@ public class PremiumPostPlan
     public List<string> Enhancements { get; set; } = [];
     public List<string> BugFixes { get; set; } = [];
     public List<string> Misc { get; set; } = [];
+}
+
+public class ChangelogSummaryPlan
+{
+    public List<string> TopThingsToKnow { get; set; } = [];
+    public List<string> Paragraphs { get; set; } = [];
 }
