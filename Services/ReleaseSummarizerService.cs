@@ -295,6 +295,10 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
         // Cap at reasonable maximum to avoid token limits
         maxItems = Math.Min(maxItems, isCliWeekly ? 12 : 10);
+        if (totalItemCount > 0)
+        {
+            maxItems = Math.Min(maxItems, totalItemCount);
+        }
         
         if (feedType == "cli-weekly")
         {
@@ -551,6 +555,7 @@ Requirements:
 - DO NOT add ""...and X more"" if all meaningful features are already shown
 - DO NOT include any markdown formatting or headers
 - Output ONLY the formatted feature list, nothing else
+
 - REMEMBER: More features shown explicitly is ALWAYS better than longer descriptions!
 
 Example output format (showing 4 features from 6 total, with 2 omitted):
@@ -824,15 +829,23 @@ Constraints:
 - Premium X maximum post length: {maxLength} characters
 - Organize content into these exact sections: Top features, Enhancements, Bug fixes, Misc
 - Return concise, emoji-prefixed items
+- Emojify EVERY item with a relevant emoji
+- Use varied, context-aware emojis across items; do NOT use the same emoji for every line
+- Match emoji style to the section when possible:
+    - Top features: ✨ 🎉 🚀 🔥
+    - Enhancements: ⚡ 🔧 🎨 🛠️
+    - Bug fixes: 🐛 🩹 ✅
+    - Misc: 📖 🧰 🔒 🏗️
+- Avoid repeating the exact same emoji on adjacent items unless it is clearly the best fit
 - Include as many distinct updates as possible while staying concise
 
 Respond with JSON only. Example:
 {{
   ""totalCount"": 24,
-  ""topFeatures"": [""✨ Smarter workspace context selection for prompts"", ""✨ New remote agent setup flow""],
-  ""enhancements"": [""⚡ Faster indexing for large repositories""],
-  ""bugFixes"": [""🐛 Fixed auth refresh edge cases""],
-  ""misc"": [""📖 Updated setup and troubleshooting docs""]
+    ""topFeatures"": [""✨ Smarter workspace context selection for prompts"", ""🚀 New remote agent setup flow""],
+    ""enhancements"": [""⚡ Faster indexing for large repositories"", ""🎨 Cleaner inline progress states""],
+    ""bugFixes"": [""🐛 Fixed auth refresh edge cases"", ""🩹 Resolved terminal paste regression""],
+    ""misc"": [""📖 Updated setup and troubleshooting docs"", ""🔒 Hardened token handling defaults""]
 }}";
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
@@ -999,7 +1012,14 @@ Rules:
 - Place performance, UX polish, and iterative upgrades under enhancements
 - Place defects/regressions under bugFixes
 - Place docs/tooling/other updates under misc
-- Each item must start with an emoji and be concise
+- Every item must start with a single relevant emoji and be concise
+- Use varied emojis that fit the content; avoid using the same emoji for every item
+- Prefer emoji palettes by section:
+    - topFeatures: ✨ 🎉 🚀 🔥
+    - enhancements: ⚡ 🔧 🎨 🛠️
+    - bugFixes: 🐛 🩹 ✅
+    - misc: 📖 🧰 🔒 🏗️
+- Avoid repeating the same emoji on adjacent items when a different relevant emoji would work
 - Never include usernames, PR numbers, or issue IDs
 - Deduplicate overlapping items
 - Keep wording useful for developers, not marketing fluff

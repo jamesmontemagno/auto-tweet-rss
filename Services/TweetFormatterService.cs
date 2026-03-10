@@ -1187,19 +1187,39 @@ public partial class TweetFormatterService
         string header, string summary, int totalCount, string link, string hashtag, int maxPostLength)
     {
         var topN = GetTopHighlightsCount();
+        var maxLines = totalCount > 0 ? totalCount : int.MaxValue;
 
-        // Split summary into individual lines, filtering out "...and X more" markers
+        // Split summary into individual lines, filtering out intro/commentary lines and
+        // ensuring we never create more thread items than the actual detected feature count.
         var lines = summary
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim())
             .Where(l => !string.IsNullOrWhiteSpace(l) &&
-                        !l.StartsWith("...and ", StringComparison.OrdinalIgnoreCase))
+                        !l.StartsWith("...and ", StringComparison.OrdinalIgnoreCase) &&
+                        !IsThreadIntroLine(l))
+            .Take(maxLines)
             .ToList();
 
         var highlights = (IReadOnlyList<string>)lines.Take(topN).ToList();
         var followUpGroups = GroupFeatureLines(lines.Skip(topN).ToList(), 4);
 
         return AssembleThread(header, highlights, followUpGroups, totalCount, link, hashtag, maxPostLength);
+    }
+
+    private static bool IsThreadIntroLine(string line)
+    {
+        if (line.EndsWith(":", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return line.StartsWith("summary", StringComparison.OrdinalIgnoreCase)
+            || line.StartsWith("overview", StringComparison.OrdinalIgnoreCase)
+            || line.StartsWith("highlights", StringComparison.OrdinalIgnoreCase)
+            || line.StartsWith("this week", StringComparison.OrdinalIgnoreCase)
+            || line.StartsWith("this release", StringComparison.OrdinalIgnoreCase)
+            || line.StartsWith("in this update", StringComparison.OrdinalIgnoreCase)
+            || line.StartsWith("vs code insiders", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
