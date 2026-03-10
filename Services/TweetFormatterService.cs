@@ -42,6 +42,29 @@ public partial class TweetFormatterService
         _releaseSummarizer = releaseSummarizer;
     }
 
+    private static int GetTextLength(string text, bool useXWeightedLength)
+        => useXWeightedLength ? XPostLengthHelper.GetWeightedLength(text) : text.Length;
+
+    private static bool FitsWithinLimit(string text, int limit, bool useXWeightedLength)
+        => useXWeightedLength ? XPostLengthHelper.FitsWithinLimit(text, limit) : text.Length <= limit;
+
+    private static string TruncateToLimit(string text, int limit, bool useXWeightedLength)
+    {
+        if (limit <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (FitsWithinLimit(text, limit, useXWeightedLength))
+        {
+            return text;
+        }
+
+        return useXWeightedLength
+            ? XPostLengthHelper.TruncateToWeightedLength(text, limit)
+            : text[..Math.Max(0, limit - 3)] + "...";
+    }
+
     public async Task<string> FormatTweetAsync(ReleaseEntry entry, bool useAi = false)
     {
         // Determine if we should use AI
@@ -79,11 +102,12 @@ public partial class TweetFormatterService
 
         // Calculate available space for AI summary
         var header = $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!";
-        var newlines = 6; // 2 between each section
-        var hashtagLength = Hashtag.Length;
-        
         var buffer = 6; // Small buffer to avoid edge cases
-        var availableForFeatures = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines - buffer;
+        var reservedLength = GetTextLength($"{header}\n\n", useXWeightedLength: true)
+            + UrlLength
+            + GetTextLength($"\n\n{Hashtag}", useXWeightedLength: true)
+            + buffer;
+        var availableForFeatures = Math.Max(0, MaxTweetLength - reservedLength);
         
         // Get AI-generated summary with CLI-specific prompt
         var features = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForFeatures, feedType: "cli");
@@ -92,9 +116,9 @@ public partial class TweetFormatterService
         var tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
         
         // Final safety check - try to preserve "...and X more" if truncation needed
-        if (tweet.Length > MaxTweetLength)
+        if (!FitsWithinLimit(tweet, MaxTweetLength, useXWeightedLength: true))
         {
-            features = TruncatePreservingMoreIndicator(features, tweet.Length - MaxTweetLength);
+            features = TruncatePreservingMoreIndicatorToLimit(features, availableForFeatures, useXWeightedLength: true);
             tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
         }
         
@@ -106,10 +130,10 @@ public partial class TweetFormatterService
         // Calculate available space
         // Format: "{header}\n\n{features}\n\n{url}\n\n{hashtag}"
         var header = $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!";
-        var newlines = 6; // 2 between each section
-        var hashtagLength = Hashtag.Length;
-        
-        var availableForFeatures = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
+        var reservedLength = GetTextLength($"{header}\n\n", useXWeightedLength: true)
+            + UrlLength
+            + GetTextLength($"\n\n{Hashtag}", useXWeightedLength: true);
+        var availableForFeatures = Math.Max(0, MaxTweetLength - reservedLength);
         
         // Extract and format features from HTML content
         var features = ExtractFeatures(entry.Content, availableForFeatures);
@@ -118,11 +142,9 @@ public partial class TweetFormatterService
         var tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
         
         // Final safety check - truncate if needed (shouldn't happen with proper calculation)
-        if (tweet.Length > MaxTweetLength)
+        if (!FitsWithinLimit(tweet, MaxTweetLength, useXWeightedLength: true))
         {
-            // Truncate features to fit
-            var overflow = tweet.Length - MaxTweetLength;
-            features = features[..^(overflow + 3)] + "...";
+            features = TruncateToLimit(features, availableForFeatures, useXWeightedLength: true);
             tweet = $"{header}\n\n{features}\n\n{entry.Link}\n\n{Hashtag}";
         }
         
@@ -160,11 +182,12 @@ public partial class TweetFormatterService
 
         // Calculate available space for AI summary
         var header = $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
-        var newlines = 6; // 2 between each section
-        var hashtagLength = SdkHashtag.Length;
         var buffer = 6; // Small buffer to avoid edge cases
-        
-        var availableForSummary = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines - buffer;
+        var reservedLength = GetTextLength($"{header}\n\n", useXWeightedLength: true)
+            + UrlLength
+            + GetTextLength($"\n\n{SdkHashtag}", useXWeightedLength: true)
+            + buffer;
+        var availableForSummary = Math.Max(0, MaxTweetLength - reservedLength);
         
         // Get AI-generated summary with SDK-specific prompt
         var summary = await _releaseSummarizer.SummarizeReleaseAsync(entry.Title, entry.Content, availableForSummary, feedType: "sdk");
@@ -173,9 +196,9 @@ public partial class TweetFormatterService
         var tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
         
         // Final safety check - try to preserve "...and X more" if truncation needed
-        if (tweet.Length > MaxTweetLength)
+        if (!FitsWithinLimit(tweet, MaxTweetLength, useXWeightedLength: true))
         {
-            summary = TruncatePreservingMoreIndicator(summary, tweet.Length - MaxTweetLength);
+            summary = TruncatePreservingMoreIndicatorToLimit(summary, availableForSummary, useXWeightedLength: true);
             tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
         }
         
@@ -205,13 +228,12 @@ public partial class TweetFormatterService
 
         var highlightsPrefix = "Highlights:\n";
         var url = "https://github.com/github/copilot-cli/releases";
-        var newlines = 7; // 2 after header, 1 after prefix, 2 after highlights, 2 after URL
         var buffer = 4; // Small buffer to avoid edge cases
-        var availableForHighlights = MaxTweetLength - header.Length - highlightsPrefix.Length - UrlLength - Hashtag.Length - newlines - buffer;
-        if (availableForHighlights < 0)
-        {
-            availableForHighlights = 0;
-        }
+        var reservedLength = GetTextLength($"{header}\n\n{highlightsPrefix}", useXWeightedLength: true)
+            + UrlLength
+            + GetTextLength($"\n\n{Hashtag}", useXWeightedLength: true)
+            + buffer;
+        var availableForHighlights = Math.Max(0, MaxTweetLength - reservedLength);
 
         string highlights;
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
@@ -250,10 +272,9 @@ public partial class TweetFormatterService
 
         var tweet = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{Hashtag}";
 
-        if (tweet.Length > MaxTweetLength)
+        if (!FitsWithinLimit(tweet, MaxTweetLength, useXWeightedLength: true))
         {
-            var overflow = tweet.Length - MaxTweetLength;
-            highlights = TruncatePreservingMoreIndicator(highlights, overflow);
+            highlights = TruncatePreservingMoreIndicatorToLimit(highlights, availableForHighlights, useXWeightedLength: true);
             tweet = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{Hashtag}";
         }
 
@@ -262,17 +283,17 @@ public partial class TweetFormatterService
 
     public string FormatVSCodeChangelogTweet(string summary, DateTime startDate, DateTime endDate, string url)
     {
-        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxTweetLength, UrlLength);
+        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxTweetLength, UrlLength, useXWeightedLength: true);
     }
 
     public string FormatVSCodeChangelogTweetForX(string summary, DateTime startDate, DateTime endDate, string url)
     {
-        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxTweetLength, UrlLength);
+        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxTweetLength, UrlLength, useXWeightedLength: true);
     }
 
     public string FormatVSCodeChangelogTweetForBluesky(string summary, DateTime startDate, DateTime endDate, string url)
     {
-        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxBlueskyLength, url.Length);
+        return FormatVSCodeChangelogPost(summary, startDate, endDate, url, MaxBlueskyLength, url.Length, useXWeightedLength: false);
     }
 
     public async Task<string> FormatVSCodeWeeklyRecapForXAsync(
@@ -282,7 +303,7 @@ public partial class TweetFormatterService
         string url,
         Func<int, Task<string>> generateSummary)
     {
-        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxTweetLength, UrlLength, generateSummary);
+        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxTweetLength, UrlLength, generateSummary, useXWeightedLength: true);
     }
 
     public async Task<string> FormatVSCodeWeeklyRecapForBlueskyAsync(
@@ -292,7 +313,7 @@ public partial class TweetFormatterService
         string url,
         Func<int, Task<string>> generateSummary)
     {
-        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxBlueskyLength, url.Length, generateSummary);
+        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxBlueskyLength, url.Length, generateSummary, useXWeightedLength: false);
     }
 
     private async Task<string> FormatVSCodeWeeklyRecapPostAsync(
@@ -302,7 +323,8 @@ public partial class TweetFormatterService
         string url,
         int maxPostLength,
         int effectiveUrlLength,
-        Func<int, Task<string>> generateSummary)
+        Func<int, Task<string>> generateSummary,
+        bool useXWeightedLength)
     {
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var featureWord = featureCount == 1 ? "feature" : "features";
@@ -311,13 +333,12 @@ public partial class TweetFormatterService
             $"✨ {featureCount} new {featureWord}");
 
         var highlightsPrefix = "Highlights:\n";
-        var newlines = 7; // 2 after header, 1 after prefix, 2 after highlights, 2 after URL
         var buffer = 4;
-        var availableForHighlights = maxPostLength - header.Length - highlightsPrefix.Length - effectiveUrlLength - VSCodeHashtag.Length - newlines - buffer;
-        if (availableForHighlights < 0)
-        {
-            availableForHighlights = 0;
-        }
+        var reservedLength = GetTextLength($"{header}\n\n{highlightsPrefix}", useXWeightedLength)
+            + effectiveUrlLength
+            + GetTextLength($"\n\n{VSCodeHashtag}", useXWeightedLength)
+            + buffer;
+        var availableForHighlights = Math.Max(0, maxPostLength - reservedLength);
 
         var highlights = await generateSummary(availableForHighlights);
 
@@ -328,17 +349,16 @@ public partial class TweetFormatterService
 
         var post = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{VSCodeHashtag}";
 
-        if (post.Length > maxPostLength)
+        if (!FitsWithinLimit(post, maxPostLength, useXWeightedLength))
         {
-            var overflow = post.Length - maxPostLength;
-            highlights = TruncatePreservingMoreIndicator(highlights, overflow);
+            highlights = TruncatePreservingMoreIndicatorToLimit(highlights, availableForHighlights, useXWeightedLength);
             post = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{VSCodeHashtag}";
         }
 
         return post;
     }
 
-    private string FormatVSCodeChangelogPost(string summary, DateTime startDate, DateTime endDate, string url, int maxPostLength, int effectiveUrlLength)
+    private string FormatVSCodeChangelogPost(string summary, DateTime startDate, DateTime endDate, string url, int maxPostLength, int effectiveUrlLength, bool useXWeightedLength)
     {
         var dateLabel = startDate.Date == endDate.Date
             ? FormatShortDate(endDate)
@@ -350,20 +370,18 @@ public partial class TweetFormatterService
             summary = "See latest updates.";
         }
 
-        var newlines = 6; // 2 between header/summary, 2 between summary/url, 2 between url/hashtag
         var buffer = 4;
-        var availableForSummary = maxPostLength - header.Length - effectiveUrlLength - VSCodeHashtag.Length - newlines - buffer;
-        if (availableForSummary < 0)
-        {
-            availableForSummary = 0;
-        }
+        var reservedLength = GetTextLength($"{header}\n\n", useXWeightedLength)
+            + effectiveUrlLength
+            + GetTextLength($"\n\n{VSCodeHashtag}", useXWeightedLength)
+            + buffer;
+        var availableForSummary = Math.Max(0, maxPostLength - reservedLength);
 
-        if (summary.Length > availableForSummary)
+        if (!FitsWithinLimit(summary, availableForSummary, useXWeightedLength))
         {
             if (availableForSummary > MinTruncatedLineLength)
             {
-                var overflow = summary.Length - availableForSummary;
-                summary = TruncatePreservingMoreIndicator(summary, overflow);
+                summary = TruncatePreservingMoreIndicatorToLimit(summary, availableForSummary, useXWeightedLength);
             }
             else
             {
@@ -373,10 +391,9 @@ public partial class TweetFormatterService
 
         var tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
 
-        if (tweet.Length > maxPostLength)
+        if (!FitsWithinLimit(tweet, maxPostLength, useXWeightedLength))
         {
-            var overflow = tweet.Length - maxPostLength;
-            summary = TruncatePreservingMoreIndicator(summary, overflow);
+            summary = TruncatePreservingMoreIndicatorToLimit(summary, availableForSummary, useXWeightedLength);
             tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
         }
 
@@ -386,8 +403,18 @@ public partial class TweetFormatterService
     /// <summary>
     /// Truncates the summary while trying to preserve the "...and X more" indicator
     /// </summary>
-    private static string TruncatePreservingMoreIndicator(string summary, int overflow)
+    private static string TruncatePreservingMoreIndicatorToLimit(string summary, int targetLength, bool useXWeightedLength)
     {
+        if (targetLength <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (FitsWithinLimit(summary, targetLength, useXWeightedLength))
+        {
+            return summary;
+        }
+
         // Check if the summary ends with "...and X more" pattern
         var match = MoreIndicatorPattern().Match(summary);
         
@@ -407,7 +434,7 @@ public partial class TweetFormatterService
                 var trimmedContent = string.Join("\n", lines);
                 var newSummary = trimmedContent + moreSuffix;
                 
-                if (newSummary.Length <= summary.Length - overflow)
+                if (FitsWithinLimit(newSummary, targetLength, useXWeightedLength))
                 {
                     return newSummary;
                 }
@@ -416,16 +443,16 @@ public partial class TweetFormatterService
             // If we still don't fit, truncate the last remaining line
             if (lines.Count == 1)
             {
-                var targetLength = summary.Length - overflow - moreSuffix.Length - 3; // -3 for "..."
-                if (targetLength > MinTruncatedLineLength)
+                var availableLength = targetLength - GetTextLength(moreSuffix, useXWeightedLength) - 3;
+                if (availableLength > MinTruncatedLineLength)
                 {
-                    return lines[0][..targetLength] + "..." + moreSuffix;
+                    return TruncateToLimit(lines[0], availableLength, useXWeightedLength) + moreSuffix;
                 }
             }
         }
         
         // Fallback to simple truncation if no "more" pattern found
-        return summary[..^(overflow + 3)] + "...";
+        return TruncateToLimit(summary, targetLength, useXWeightedLength);
     }
 
     public string FormatSdkTweet(ReleaseEntry entry)
@@ -433,10 +460,10 @@ public partial class TweetFormatterService
         // Calculate available space
         // Format: "{header}\n\n{summary}\n\n{url}\n\n{hashtag}"
         var header = $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
-        var newlines = 6; // 2 between each section
-        var hashtagLength = SdkHashtag.Length;
-        
-        var availableForSummary = MaxTweetLength - header.Length - UrlLength - hashtagLength - newlines;
+        var reservedLength = GetTextLength($"{header}\n\n", useXWeightedLength: true)
+            + UrlLength
+            + GetTextLength($"\n\n{SdkHashtag}", useXWeightedLength: true);
+        var availableForSummary = Math.Max(0, MaxTweetLength - reservedLength);
         
         // Extract and summarize changes from SDK content
         var summary = ExtractSdkSummary(entry.Content, availableForSummary);
@@ -445,11 +472,9 @@ public partial class TweetFormatterService
         var tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
         
         // Final safety check - truncate if needed
-        if (tweet.Length > MaxTweetLength)
+        if (!FitsWithinLimit(tweet, MaxTweetLength, useXWeightedLength: true))
         {
-            // Truncate summary to fit
-            var overflow = tweet.Length - MaxTweetLength;
-            summary = summary[..^(overflow + 3)] + "...";
+            summary = TruncateToLimit(summary, availableForSummary, useXWeightedLength: true);
             tweet = $"{header}\n\n{summary}\n\n{entry.Link}\n\n{SdkHashtag}";
         }
         
@@ -504,10 +529,10 @@ public partial class TweetFormatterService
         {
             var featureWithNewline = result.Count > 0 ? $"\n{feature}" : feature;
             
-            if (currentLength + featureWithNewline.Length <= maxLength)
+            if (currentLength + GetTextLength(featureWithNewline, useXWeightedLength: true) <= maxLength)
             {
                 result.Add(feature);
-                currentLength += featureWithNewline.Length;
+                currentLength += GetTextLength(featureWithNewline, useXWeightedLength: true);
             }
             else
             {
@@ -534,7 +559,7 @@ public partial class TweetFormatterService
         {
             var remaining = features.Count - result.Count;
             var indicator = $"...and {remaining} more";
-            if (currentLength + indicator.Length + 1 <= maxLength)
+            if (currentLength + GetTextLength($"\n{indicator}", useXWeightedLength: true) <= maxLength)
             {
                 result.Add(indicator);
             }
@@ -666,10 +691,10 @@ public partial class TweetFormatterService
         {
             var changeWithNewline = result.Count > 0 ? $"\n{change}" : change;
             
-            if (currentLength + changeWithNewline.Length <= maxLength)
+            if (currentLength + GetTextLength(changeWithNewline, useXWeightedLength: true) <= maxLength)
             {
                 result.Add(change);
-                currentLength += changeWithNewline.Length;
+                currentLength += GetTextLength(changeWithNewline, useXWeightedLength: true);
             }
             else
             {
@@ -690,7 +715,7 @@ public partial class TweetFormatterService
             if (remaining > 0)
             {
                 var indicator = $"...and {remaining} more";
-                if (currentLength + indicator.Length + 1 <= maxLength)
+                if (currentLength + GetTextLength($"\n{indicator}", useXWeightedLength: true) <= maxLength)
                 {
                     result.Add(indicator);
                 }
@@ -720,19 +745,19 @@ public partial class TweetFormatterService
 
     /// <summary>Formats a Copilot CLI release as a thread for X/Twitter.</summary>
     public Task<IReadOnlyList<string>> FormatCliThreadForXAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxTweetLength, Hashtag);
+        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxTweetLength, Hashtag, useXWeightedLength: true);
 
     /// <summary>Formats a Copilot CLI release as a thread for Bluesky.</summary>
     public Task<IReadOnlyList<string>> FormatCliThreadForBlueskyAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxBlueskyLength, Hashtag);
+        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxBlueskyLength, Hashtag, useXWeightedLength: false);
 
     /// <summary>Formats a Copilot SDK release as a thread for X/Twitter.</summary>
     public Task<IReadOnlyList<string>> FormatSdkThreadForXAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxTweetLength, SdkHashtag);
+        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxTweetLength, SdkHashtag, useXWeightedLength: true);
 
     /// <summary>Formats a Copilot SDK release as a thread for Bluesky.</summary>
     public Task<IReadOnlyList<string>> FormatSdkThreadForBlueskyAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxBlueskyLength, SdkHashtag);
+        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxBlueskyLength, SdkHashtag, useXWeightedLength: false);
 
     /// <summary>Formats a Copilot CLI release as a single Premium X mega-post.</summary>
     public Task<string> FormatCliPremiumPostForXAsync(ReleaseEntry entry, bool useAi = false)
@@ -743,7 +768,7 @@ public partial class TweetFormatterService
         => FormatReleasePremiumPostForXAsync(entry, useAi, isCli: false, SdkHashtag);
 
     private async Task<IReadOnlyList<string>> FormatReleaseThreadAsync(
-        ReleaseEntry entry, bool useAi, bool isCli, int maxPostLength, string hashtag)
+        ReleaseEntry entry, bool useAi, bool isCli, int maxPostLength, string hashtag, bool useXWeightedLength)
     {
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
         ThreadPlan? plan = null;
@@ -767,7 +792,7 @@ public partial class TweetFormatterService
             ? $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!"
             : $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
 
-        return BuildReleaseThread(entry, plan, header, maxPostLength, hashtag);
+        return BuildReleaseThread(entry, plan, header, maxPostLength, hashtag, useXWeightedLength);
     }
 
     private async Task<string> FormatReleasePremiumPostForXAsync(
@@ -833,7 +858,7 @@ public partial class TweetFormatterService
     }
 
     private IReadOnlyList<string> BuildReleaseThread(
-        ReleaseEntry entry, ThreadPlan? plan, string header, int maxPostLength, string hashtag)
+        ReleaseEntry entry, ThreadPlan? plan, string header, int maxPostLength, string hashtag, bool useXWeightedLength)
     {
         List<string> allItems;
         int totalCount;
@@ -853,9 +878,9 @@ public partial class TweetFormatterService
         var topN = GetTopHighlightsCount();
         var highlights = allItems.Take(topN).ToList();
         var remaining = allItems.Skip(topN).ToList();
-        var followUpGroups = PackItemsIntoPosts(remaining, maxPostLength);
+        var followUpGroups = PackItemsIntoPosts(remaining, maxPostLength, useXWeightedLength);
 
-        return AssembleThread(header, highlights, followUpGroups, totalCount, entry.Link, hashtag, maxPostLength);
+        return AssembleThread(header, highlights, followUpGroups, totalCount, entry.Link, hashtag, maxPostLength, useXWeightedLength);
     }
 
     /// <summary>Formats a CLI weekly recap as a thread for X/Twitter.</summary>
@@ -865,7 +890,7 @@ public partial class TweetFormatterService
         DateTimeOffset weekEndPacific,
         int improvementCount,
         bool useAi = false)
-        => FormatWeeklyCliRecapThreadInternalAsync(entries, weekStartPacific, weekEndPacific, improvementCount, useAi, MaxTweetLength);
+        => FormatWeeklyCliRecapThreadInternalAsync(entries, weekStartPacific, weekEndPacific, improvementCount, useAi, MaxTweetLength, useXWeightedLength: true);
 
     private async Task<IReadOnlyList<string>> FormatWeeklyCliRecapThreadInternalAsync(
         IReadOnlyList<ReleaseEntry> entries,
@@ -873,7 +898,8 @@ public partial class TweetFormatterService
         DateTimeOffset weekEndPacific,
         int improvementCount,
         bool useAi,
-        int maxPostLength)
+        int maxPostLength,
+        bool useXWeightedLength)
     {
         var releaseCount = entries.Count;
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
@@ -920,10 +946,10 @@ public partial class TweetFormatterService
         var topN = GetTopHighlightsCount();
         var highlights = allItems.Take(topN).ToList();
         var remaining = allItems.Skip(topN).ToList();
-        var followUpGroups = PackItemsIntoPosts(remaining, maxPostLength);
+        var followUpGroups = PackItemsIntoPosts(remaining, maxPostLength, useXWeightedLength);
 
         var url = "https://github.com/github/copilot-cli/releases";
-        return AssembleThread(header, highlights, followUpGroups, totalCount, url, Hashtag, maxPostLength);
+        return AssembleThread(header, highlights, followUpGroups, totalCount, url, Hashtag, maxPostLength, useXWeightedLength);
     }
 
     /// <summary>Formats a CLI weekly recap as a single Premium X mega-post.</summary>
@@ -994,12 +1020,12 @@ public partial class TweetFormatterService
     /// <summary>Formats a VS Code Insiders daily changelog as a thread for X/Twitter.</summary>
     public IReadOnlyList<string> FormatVSCodeChangelogThreadForX(
         string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url)
-        => FormatVSCodeChangelogThread(fullSummary, featureCount, startDate, endDate, url, MaxTweetLength);
+        => FormatVSCodeChangelogThread(fullSummary, featureCount, startDate, endDate, url, MaxTweetLength, useXWeightedLength: true);
 
     /// <summary>Formats a VS Code Insiders daily changelog as a thread for Bluesky.</summary>
     public IReadOnlyList<string> FormatVSCodeChangelogThreadForBluesky(
         string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url)
-        => FormatVSCodeChangelogThread(fullSummary, featureCount, startDate, endDate, url, MaxBlueskyLength);
+        => FormatVSCodeChangelogThread(fullSummary, featureCount, startDate, endDate, url, MaxBlueskyLength, useXWeightedLength: false);
 
     /// <summary>Formats a VS Code changelog as a single Premium X mega-post.</summary>
     public string FormatVSCodeChangelogPremiumPostForX(
@@ -1026,9 +1052,9 @@ public partial class TweetFormatterService
                 ? feature.Title
                 : $"{feature.Title}: {feature.Description}";
             text = text.Trim();
-            if (text.Length > 230)
+            if (!FitsWithinLimit(text, 230, useXWeightedLength: true))
             {
-                text = text[..227] + "...";
+                text = TruncateToLimit(text, 230, useXWeightedLength: true);
             }
 
             var line = $"{GetEmojiForFeature(text)} {text}";
@@ -1063,7 +1089,7 @@ public partial class TweetFormatterService
     }
 
     private IReadOnlyList<string> FormatVSCodeChangelogThread(
-        string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url, int maxPostLength)
+        string fullSummary, int featureCount, DateTime startDate, DateTime endDate, string url, int maxPostLength, bool useXWeightedLength)
     {
         var dateLabel = startDate.Date == endDate.Date
             ? FormatShortDate(endDate)
@@ -1071,7 +1097,7 @@ public partial class TweetFormatterService
         var featureWord = featureCount == 1 ? "feature" : "features";
         var header = $"🚀 Insiders Update - {dateLabel}\n{featureCount} new {featureWord} 🧵";
 
-        return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength);
+        return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength, useXWeightedLength);
     }
 
     /// <summary>Formats a VS Code Insiders weekly recap as a single Premium X mega-post.</summary>
@@ -1097,9 +1123,9 @@ public partial class TweetFormatterService
                 ? feature.Title
                 : $"{feature.Title}: {feature.Description}";
             text = text.Trim();
-            if (text.Length > 230)
+            if (!FitsWithinLimit(text, 230, useXWeightedLength: true))
             {
-                text = text[..227] + "...";
+                text = TruncateToLimit(text, 230, useXWeightedLength: true);
             }
 
             var line = $"{GetEmojiForFeature(text)} {text}";
@@ -1140,7 +1166,7 @@ public partial class TweetFormatterService
         DateTimeOffset weekEndPacific,
         string url,
         Func<int, Task<string>> generateSummary)
-        => await FormatVSCodeWeeklyRecapThreadAsync(featureCount, weekStartPacific, weekEndPacific, url, generateSummary, MaxTweetLength);
+        => await FormatVSCodeWeeklyRecapThreadAsync(featureCount, weekStartPacific, weekEndPacific, url, generateSummary, MaxTweetLength, useXWeightedLength: true);
 
     /// <summary>Formats a VS Code Insiders weekly recap as a thread for Bluesky.</summary>
     public async Task<IReadOnlyList<string>> FormatVSCodeWeeklyRecapThreadForBlueskyAsync(
@@ -1149,7 +1175,7 @@ public partial class TweetFormatterService
         DateTimeOffset weekEndPacific,
         string url,
         Func<int, Task<string>> generateSummary)
-        => await FormatVSCodeWeeklyRecapThreadAsync(featureCount, weekStartPacific, weekEndPacific, url, generateSummary, MaxBlueskyLength);
+        => await FormatVSCodeWeeklyRecapThreadAsync(featureCount, weekStartPacific, weekEndPacific, url, generateSummary, MaxBlueskyLength, useXWeightedLength: false);
 
     private async Task<IReadOnlyList<string>> FormatVSCodeWeeklyRecapThreadAsync(
         int featureCount,
@@ -1157,7 +1183,8 @@ public partial class TweetFormatterService
         DateTimeOffset weekEndPacific,
         string url,
         Func<int, Task<string>> generateSummary,
-        int maxPostLength)
+        int maxPostLength,
+        bool useXWeightedLength)
     {
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var featureWord = featureCount == 1 ? "feature" : "features";
@@ -1172,7 +1199,7 @@ public partial class TweetFormatterService
             fullSummary = "✨ See the latest Insiders updates";
         }
 
-        return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength);
+        return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength, useXWeightedLength);
     }
 
     // -----------------------------------------------------------------------
@@ -1184,7 +1211,7 @@ public partial class TweetFormatterService
     /// using the first N lines as first-post highlights and grouping the rest.
     /// </summary>
     private IReadOnlyList<string> BuildThreadFromSummaryLines(
-        string header, string summary, int totalCount, string link, string hashtag, int maxPostLength)
+        string header, string summary, int totalCount, string link, string hashtag, int maxPostLength, bool useXWeightedLength)
     {
         var topN = GetTopHighlightsCount();
         var maxLines = totalCount > 0 ? totalCount : int.MaxValue;
@@ -1203,7 +1230,7 @@ public partial class TweetFormatterService
         var highlights = (IReadOnlyList<string>)lines.Take(topN).ToList();
         var followUpGroups = GroupFeatureLines(lines.Skip(topN).ToList(), 4);
 
-        return AssembleThread(header, highlights, followUpGroups, totalCount, link, hashtag, maxPostLength);
+        return AssembleThread(header, highlights, followUpGroups, totalCount, link, hashtag, maxPostLength, useXWeightedLength);
     }
 
     private static bool IsThreadIntroLine(string line)
@@ -1233,7 +1260,8 @@ public partial class TweetFormatterService
         int totalCount,
         string link,
         string hashtag,
-        int maxPostLength)
+        int maxPostLength,
+        bool useXWeightedLength)
     {
         var posts = new List<string>();
 
@@ -1252,18 +1280,20 @@ public partial class TweetFormatterService
         }
 
         // Trim to platform limit if needed
-        if (firstPost.Length > maxPostLength)
+        if (!FitsWithinLimit(firstPost, maxPostLength, useXWeightedLength))
         {
             var suffix = "\n\n" + leadIn;
-            var available = maxPostLength - suffix.Length;
-            firstPost = (available > 0 ? firstPost[..available] : header) + suffix;
+            var available = maxPostLength - GetTextLength(suffix, useXWeightedLength);
+            firstPost = (available > 0 ? TruncateToLimit(firstPost, available, useXWeightedLength) : header) + suffix;
         }
         posts.Add(firstPost);
 
         // --- Follow-up posts ---
         foreach (var group in followUpGroups)
         {
-            var post = group.Length > maxPostLength ? group[..(maxPostLength - 3)] + "..." : group;
+            var post = FitsWithinLimit(group, maxPostLength, useXWeightedLength)
+                ? group
+                : TruncateToLimit(group, maxPostLength, useXWeightedLength);
             posts.Add(post);
         }
 
@@ -1275,7 +1305,7 @@ public partial class TweetFormatterService
         {
             var prevIndex = posts.Count - 1;
             var merged = $"{posts[prevIndex]}\n\n{lastPostContent}";
-            if (merged.Length <= maxPostLength)
+            if (FitsWithinLimit(merged, maxPostLength, useXWeightedLength))
             {
                 posts[prevIndex] = merged;
             }
@@ -1294,7 +1324,7 @@ public partial class TweetFormatterService
         {
             var indicator = $"🧵 {i + 1}/{posts.Count}";
             var postWithIndicator = $"{posts[i]}\n\n{indicator}";
-            if (postWithIndicator.Length <= maxPostLength)
+            if (FitsWithinLimit(postWithIndicator, maxPostLength, useXWeightedLength))
             {
                 posts[i] = postWithIndicator;
             }
@@ -1378,7 +1408,7 @@ public partial class TweetFormatterService
     /// maxPostLength as possible before starting a new one.
     /// Reserves space for thread indicator (~12 chars) appended later.
     /// </summary>
-    private static IReadOnlyList<string> PackItemsIntoPosts(IList<string> items, int maxPostLength)
+    private static IReadOnlyList<string> PackItemsIntoPosts(IList<string> items, int maxPostLength, bool useXWeightedLength)
     {
         if (items.Count == 0) return [];
 
@@ -1391,7 +1421,8 @@ public partial class TweetFormatterService
         foreach (var item in items)
         {
             // +1 for the newline separator between lines
-            var addedLength = currentLines.Count > 0 ? item.Length + 1 : item.Length;
+            var candidateText = currentLines.Count > 0 ? $"\n{item}" : item;
+            var addedLength = GetTextLength(candidateText, useXWeightedLength);
 
             if (currentLength + addedLength > effectiveMax && currentLines.Count > 0)
             {
@@ -1399,7 +1430,7 @@ public partial class TweetFormatterService
                 posts.Add(string.Join("\n", currentLines));
                 currentLines = [];
                 currentLength = 0;
-                addedLength = item.Length;
+                addedLength = GetTextLength(item, useXWeightedLength);
             }
 
             currentLines.Add(item);
@@ -1459,16 +1490,18 @@ public partial class TweetFormatterService
         AppendSection(sb, "Misc", misc, maxLength);
 
         var footer = $"\n{link}\n\n{hashtag}";
-        if (sb.Length + footer.Length <= maxLength)
+        if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(footer, useXWeightedLength: true) <= maxLength)
         {
             sb.Append(footer);
         }
         else
         {
-            var budget = maxLength - sb.Length - hashtag.Length - 4;
+            var budget = maxLength - GetTextLength(sb.ToString(), useXWeightedLength: true) - GetTextLength($"\n\n{hashtag}", useXWeightedLength: true);
             if (budget > 15)
             {
-                var shortenedLink = link.Length > budget ? link[..(budget - 3)] + "..." : link;
+                var shortenedLink = FitsWithinLimit(link, budget, useXWeightedLength: true)
+                    ? link
+                    : TruncateToLimit(link, budget, useXWeightedLength: true);
                 sb.Append("\n").Append(shortenedLink).Append("\n\n").Append(hashtag);
             }
             else
@@ -1478,9 +1511,9 @@ public partial class TweetFormatterService
         }
 
         var post = sb.ToString().Trim();
-        if (post.Length > maxLength)
+        if (!FitsWithinLimit(post, maxLength, useXWeightedLength: true))
         {
-            post = post[..(maxLength - 3)] + "...";
+            post = TruncateToLimit(post, maxLength, useXWeightedLength: true);
         }
 
         return post;
@@ -1509,16 +1542,18 @@ public partial class TweetFormatterService
         AppendSection(sb, "Misc", misc, maxLength);
 
         var footer = $"\n{link}\n\n{hashtag}";
-        if (sb.Length + footer.Length <= maxLength)
+        if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(footer, useXWeightedLength: true) <= maxLength)
         {
             sb.Append(footer);
         }
         else
         {
-            var budget = maxLength - sb.Length - hashtag.Length - 4;
+            var budget = maxLength - GetTextLength(sb.ToString(), useXWeightedLength: true) - GetTextLength($"\n\n{hashtag}", useXWeightedLength: true);
             if (budget > 15)
             {
-                var shortenedLink = link.Length > budget ? link[..(budget - 3)] + "..." : link;
+                var shortenedLink = FitsWithinLimit(link, budget, useXWeightedLength: true)
+                    ? link
+                    : TruncateToLimit(link, budget, useXWeightedLength: true);
                 sb.Append("\n").Append(shortenedLink).Append("\n\n").Append(hashtag);
             }
             else
@@ -1528,9 +1563,9 @@ public partial class TweetFormatterService
         }
 
         var post = sb.ToString().Trim();
-        if (post.Length > maxLength)
+        if (!FitsWithinLimit(post, maxLength, useXWeightedLength: true))
         {
-            post = post[..(maxLength - 3)] + "...";
+            post = TruncateToLimit(post, maxLength, useXWeightedLength: true);
         }
 
         return post;
@@ -1538,7 +1573,7 @@ public partial class TweetFormatterService
 
     private static void AppendSection(StringBuilder sb, string title, IReadOnlyList<string> items, int maxLength)
     {
-        if (items.Count == 0 || sb.Length >= maxLength - 32)
+        if (items.Count == 0 || GetTextLength(sb.ToString(), useXWeightedLength: true) >= maxLength - 32)
         {
             return;
         }
@@ -1549,7 +1584,7 @@ public partial class TweetFormatterService
         foreach (var item in items)
         {
             var line = $"- {item}";
-            if (sb.Length + line.Length + 1 > maxLength)
+            if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(line + "\n", useXWeightedLength: true) > maxLength)
             {
                 sb.AppendLine("- ...and more");
                 return;

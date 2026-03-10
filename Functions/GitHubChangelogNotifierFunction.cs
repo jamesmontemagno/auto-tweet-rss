@@ -152,10 +152,12 @@ public class GitHubChangelogNotifierFunction
 
     private void LogPremiumPost(GitHubChangelogEntry entry, SocialMediaPost post)
     {
+        var weightedLength = XPostLengthHelper.GetWeightedLength(post.Text);
         _logger.LogInformation(
-            "GitHub changelog premium post to send for {Title} ({Length} chars, {MediaCount} media item(s)):\n{Post}",
+            "GitHub changelog premium post to send for {Title} (raw={RawLength}, weighted={WeightedLength}, media={MediaCount}):\n{Post}",
             entry.Title,
             post.Text.Length,
+            weightedLength,
             post.MediaUrlsOrEmpty.Count,
             post.Text);
 
@@ -172,7 +174,8 @@ public class GitHubChangelogNotifierFunction
     {
         var renderedThread = string.Join(
             "\n\n",
-            thread.Select((post, index) => $"[Post {index + 1}/{thread.Count}] ({post.Text.Length} chars)\n{post.Text}"));
+            thread.Select((post, index) =>
+                $"[Post {index + 1}/{thread.Count}] (raw={post.Text.Length}, weighted={XPostLengthHelper.GetWeightedLength(post.Text)}, media={post.MediaUrlsOrEmpty.Count})\n{post.Text}"));
 
         _logger.LogInformation(
             "GitHub changelog thread to send for {Title} ({Count} post(s)):\n{Thread}",

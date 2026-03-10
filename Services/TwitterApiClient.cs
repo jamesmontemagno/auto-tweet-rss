@@ -71,7 +71,12 @@ public class TwitterApiClient
 
         try
         {
-            _logger.LogInformation("Posting tweet: {TweetPreview}...",
+            var weightedLength = XPostLengthHelper.GetWeightedLength(post.Text);
+            _logger.LogInformation(
+                "Posting tweet (raw={RawLength}, weighted={WeightedLength}, media={MediaCount}): {TweetPreview}...",
+                post.Text.Length,
+                weightedLength,
+                post.MediaUrlsOrEmpty.Count,
                 post.Text.Length > 50 ? post.Text[..50] : post.Text);
             _logger.LogInformation("OAuth configured: {IsConfigured}, Consumer key starts with: {KeyPrefix}",
                 _oauth1Helper.IsConfigured,
