@@ -9,6 +9,8 @@ public partial class TweetFormatterService
     private const int GitHubChangelogThreadBuffer = 20;
     private const int GitHubChangelogMaxThreadPosts = 4;
     private const int ThreadIndicatorReserve = 8;
+    private const int GitHubChangelogSinglePostMaxLength = 260;
+    private const int GitHubChangelogSinglePostBuffer = 4;
     private const int GitHubChangelogThreadParagraphMaxLength = 200;
     private const int GitHubChangelogPremiumParagraphMaxLength = 420;
     private const string GitHubChangelogHashtag = "#GitHub";
@@ -72,6 +74,55 @@ public partial class TweetFormatterService
             hashtags,
             plan.TopThingsToKnow,
             plan.Paragraphs);
+
+        return new SocialMediaPost(text);
+    }
+
+    public async Task<SocialMediaPost> FormatGitHubChangelogSinglePostForXAsync(
+        GitHubChangelogEntry entry,
+        bool useAi = false)
+    {
+        var reservedLength = UrlLength
+            + GetTextLength("\n\n", useXWeightedLength: true)
+            + GitHubChangelogSinglePostBuffer;
+        var availableForSummary = Math.Max(0, GitHubChangelogSinglePostMaxLength - reservedLength);
+
+        string summary;
+        var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
+        if (shouldUseAi && _releaseSummarizer != null)
+        {
+            try
+            {
+                summary = await _releaseSummarizer.SummarizeGitHubChangelogSinglePostAsync(
+                    entry.Title,
+                    BuildGitHubChangelogAiPayload(entry),
+                    availableForSummary) ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to generate GitHub changelog single post AI summary for {Title}. Falling back.", entry.Title);
+                summary = string.Empty;
+            }
+        }
+        else
+        {
+            summary = string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            summary = BuildGitHubChangelogSinglePostFallback(entry, availableForSummary);
+        }
+
+        summary = XPostLengthHelper.FitsWithinLimit(summary, availableForSummary)
+            ? summary
+            : XPostLengthHelper.TruncateToWeightedLength(summary, availableForSummary);
+        var text = $"{summary}\n\n{entry.Link}";
+        if (!XPostLengthHelper.FitsWithinLimit(text, GitHubChangelogSinglePostMaxLength))
+        {
+            summary = XPostLengthHelper.TruncateToWeightedLength(summary, availableForSummary);
+            text = $"{summary}\n\n{entry.Link}";
+        }
 
         return new SocialMediaPost(text, SelectPreferredMedia(entry));
     }
@@ -304,6 +355,31 @@ public partial class TweetFormatterService
             .Take(2)
             .Select(item => item.Url)
             .ToList();
+    }
+
+    private static string BuildGitHubChangelogSinglePostFallback(GitHubChangelogEntry entry, int maxLength)
+    {
+        var plan = BuildFallbackChangelogPlan(entry.Title, entry.SummaryText, entry.ContentHtml, entry.Labels, premiumMode: false, isWeekly: false);
+        var bulletLines = plan.TopThingsToKnow
+            .Select(item => $"• {StripLeadingDecoration(CollapseWhitespace(item))}")
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Take(4)
+            .ToList();
+
+        if (bulletLines.Count == 0 && !string.IsNullOrWhiteSpace(entry.SummaryText))
+        {
+            bulletLines.Add($"• {TruncateSentence(entry.SummaryText)}");
+        }
+
+        if (bulletLines.Count == 0)
+        {
+            bulletLines.Add("• New GitHub changelog update");
+        }
+
+        var summary = string.Join("\n", bulletLines);
+        return XPostLengthHelper.FitsWithinLimit(summary, maxLength)
+            ? summary
+            : XPostLengthHelper.TruncateToWeightedLength(summary, maxLength);
     }
 
     private static string BuildGitHubChangelogAiPayload(GitHubChangelogEntry entry)

@@ -42,6 +42,7 @@ public class TestSummaryFunction
         {
             var typeLower = type.ToLowerInvariant();
             var premiumMode = IsEnabledQuery(req, "premium");
+            var singleMode = IsEnabledQuery(req, "single");
 
             // Validate type parameter
             if (typeLower != "cli" && typeLower != "sdk" && typeLower != "vscode" && typeLower != "github-changelog")
@@ -59,7 +60,7 @@ public class TestSummaryFunction
 
             if (typeLower == "github-changelog")
             {
-                return await HandleGitHubChangelogTestSummaryAsync(response, premiumMode);
+                return await HandleGitHubChangelogTestSummaryAsync(response, premiumMode, singleMode);
             }
 
             // Determine feed URL based on type
@@ -215,7 +216,7 @@ public class TestSummaryFunction
         return response;
     }
 
-    private async Task<HttpResponseData> HandleGitHubChangelogTestSummaryAsync(HttpResponseData response, bool premiumMode)
+    private async Task<HttpResponseData> HandleGitHubChangelogTestSummaryAsync(HttpResponseData response, bool premiumMode, bool singleMode)
     {
         var entries = await _gitHubChangelogFeedService.GetEntriesAsync();
         if (entries.Count == 0)
@@ -228,7 +229,9 @@ public class TestSummaryFunction
         var latestEntry = entries.OrderByDescending(entry => entry.Updated).First();
         IReadOnlyList<SocialMediaPost> posts = premiumMode
             ? [await _tweetFormatterService.FormatGitHubChangelogPremiumPostForXAsync(latestEntry, useAi: true)]
-            : await _tweetFormatterService.FormatGitHubChangelogThreadForXAsync(latestEntry, useAi: true);
+            : singleMode
+                ? [await _tweetFormatterService.FormatGitHubChangelogSinglePostForXAsync(latestEntry, useAi: true)]
+                : await _tweetFormatterService.FormatGitHubChangelogThreadForXAsync(latestEntry, useAi: true);
 
         response.StatusCode = HttpStatusCode.OK;
         response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
@@ -238,15 +241,17 @@ public class TestSummaryFunction
         output += $"Link: {latestEntry.Link}\n";
         output += $"Labels: {string.Join(", ", latestEntry.Labels)}\n";
         output += $"Media: {string.Join(", ", latestEntry.Media.Select(item => item.Url))}\n\n";
+        output += $"Mode: {(premiumMode ? "premium" : singleMode ? "single" : "thread")}\n";
         output += $"Thread Preview ({posts.Count} posts):\n";
         output += "═══════════════════════════════════════\n";
 
         for (var i = 0; i < posts.Count; i++)
         {
-            output += $"[Post {i + 1}/{posts.Count}] ({posts[i].Text.Length} chars";
+            var weightedLength = XPostLengthHelper.GetWeightedLength(posts[i].Text);
+            output += $"[Post {i + 1}/{posts.Count}] (raw={posts[i].Text.Length}, weighted={weightedLength}";
             if (posts[i].MediaUrlsOrEmpty.Count > 0)
             {
-                output += $", {posts[i].MediaUrlsOrEmpty.Count} media";
+                output += $", media={posts[i].MediaUrlsOrEmpty.Count}";
             }
 
             output += "):\n";

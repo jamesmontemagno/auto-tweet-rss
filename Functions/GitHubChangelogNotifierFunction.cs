@@ -9,6 +9,13 @@ public class GitHubChangelogNotifierFunction
     private const string StateFileName = "github-changelog-last-processed-id.txt";
     private const int MaxPostedIdHistory = 200;
 
+    private enum GitHubChangelogPostingMode
+    {
+        Thread,
+        Single,
+        Premium
+    }
+
     private readonly ILogger<GitHubChangelogNotifierFunction> _logger;
     private readonly GitHubChangelogFeedService _feedService;
     private readonly GitHubChangelogTwitterApiClient _twitterApiClient;
@@ -63,13 +70,19 @@ public class GitHubChangelogNotifierFunction
 
             foreach (var entry in newEntries.OrderBy(entry => entry.Updated))
             {
-                var premiumMode = IsEnabled("X_GITHUB_CHANGELOG_PREMIUM_MODE");
+                var postingMode = GetPostingMode();
                 bool success;
 
-                if (premiumMode)
+                if (postingMode == GitHubChangelogPostingMode.Premium)
                 {
                     var post = await _tweetFormatterService.FormatGitHubChangelogPremiumPostForXAsync(entry, useAi: true);
                     LogPremiumPost(entry, post);
+                    success = await _twitterApiClient.PostTweetAsync(post);
+                }
+                else if (postingMode == GitHubChangelogPostingMode.Single)
+                {
+                    var post = await _tweetFormatterService.FormatGitHubChangelogSinglePostForXAsync(entry, useAi: true);
+                    LogSinglePost(entry, post);
                     success = await _twitterApiClient.PostTweetAsync(post);
                 }
                 else
@@ -148,6 +161,49 @@ public class GitHubChangelogNotifierFunction
     {
         var value = Environment.GetEnvironmentVariable(envVar);
         return bool.TryParse(value, out var enabled) && enabled;
+    }
+
+    private GitHubChangelogPostingMode GetPostingMode()
+    {
+        var premiumMode = IsEnabled("X_GITHUB_CHANGELOG_PREMIUM_MODE");
+        var singleMode = IsEnabled("X_GITHUB_CHANGELOG_SINGLE_POST_MODE");
+
+        if (premiumMode && singleMode)
+        {
+            _logger.LogWarning("Both X_GITHUB_CHANGELOG_PREMIUM_MODE and X_GITHUB_CHANGELOG_SINGLE_POST_MODE are enabled. Premium mode will take precedence.");
+        }
+
+        if (premiumMode)
+        {
+            return GitHubChangelogPostingMode.Premium;
+        }
+
+        if (singleMode)
+        {
+            return GitHubChangelogPostingMode.Single;
+        }
+
+        return GitHubChangelogPostingMode.Thread;
+    }
+
+    private void LogSinglePost(GitHubChangelogEntry entry, SocialMediaPost post)
+    {
+        var weightedLength = XPostLengthHelper.GetWeightedLength(post.Text);
+        _logger.LogInformation(
+            "GitHub changelog single post to send for {Title} (raw={RawLength}, weighted={WeightedLength}, media={MediaCount}):\n{Post}",
+            entry.Title,
+            post.Text.Length,
+            weightedLength,
+            post.MediaUrlsOrEmpty.Count,
+            post.Text);
+
+        if (post.MediaUrlsOrEmpty.Count > 0)
+        {
+            _logger.LogInformation(
+                "GitHub changelog single post media for {Title}: {MediaUrls}",
+                entry.Title,
+                string.Join(", ", post.MediaUrlsOrEmpty));
+        }
     }
 
     private void LogPremiumPost(GitHubChangelogEntry entry, SocialMediaPost post)

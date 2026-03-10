@@ -1102,6 +1102,120 @@ Requirements:
         return null;
     }
 
+    public async Task<string?> SummarizeGitHubChangelogSinglePostAsync(
+        string releaseTitle,
+        string releaseContent,
+        int maxLength,
+        CancellationToken cancellationToken = default)
+    {
+        const int maxRetries = 3;
+        var cleaned = PrepareContentForAi(releaseContent);
+        var prompt = $@"Summarize the given GitHub changelog entry using this format:
+
+One thought or insight about the update.
+First key point - what's now possible (optional).
+Second key point - what devs can do now (optional).
+Third key point - technical detail (optional).
+
+Final statement or CTA with arrow → if appropriate
+
+STRICT RULES:
+- Total length MUST be less than {maxLength} characters. Don't cut off a sentence in the middle.
+- Use bullet points with •, no emoji, no hashtags, no paragraphs. Add a line break after each bullet.
+- NO emoji ever
+- NO hashtags ever
+- Arrow Unicode (→ ↓) allowed only for the CTA sentence, at the end of the sentence.
+- NO filler words
+- Instead of using ""and"" use + or &
+- Active voice only
+- Concise and direct
+- Simple words only
+- Shorten ""administrators"" to ""admins"", ""developers"" to ""devs"", ""organizations"" to ""orgs"", ""repositories"" to ""repos"", ""pull requests"" to ""PRs"", when helpful.
+- Shorten groups of words where possible.
+- Focus on what devs can do now + what's now possible
+- Implicit second person perspective
+- Use Oxford commas
+- NO em dashes
+- Do NOT mention or tag @GitHub
+- Use whitespace Unicode character (U+200B or similar) to prevent unwanted URL unfurling when needed
+- ONLY summarize what is in the existing content - do NOT make anything up or use outside information
+- NEVER include any preface or preamble
+- Return plain text only
+
+Title:
+{releaseTitle}
+
+Content:
+{cleaned}";
+
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
+        {
+            new(ChatRole.System, "You write concise GitHub changelog social posts. Return plain text only, with no markdown code fences."),
+            new(ChatRole.User, prompt)
+        };
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Requesting GitHub changelog single-post summary for {Title} (attempt {Attempt}/{MaxRetries}, maxLength={MaxLength})",
+                    releaseTitle, attempt, maxRetries, maxLength);
+
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(GetThreadPlanTimeoutSeconds()));
+
+                var response = await _chatClient.GetResponseAsync(messages, cancellationToken: timeoutCts.Token);
+                var summary = StripCodeFences(response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty)
+                    .Replace("\r\n", "\n", StringComparison.Ordinal)
+                    .Trim();
+
+                if (string.IsNullOrWhiteSpace(summary))
+                {
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                return summary;
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex,
+                    "Timed out generating GitHub changelog single-post summary for {Title} (attempt {Attempt}/{MaxRetries}).",
+                    releaseTitle, attempt, maxRetries);
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error generating GitHub changelog single-post summary for {Title} (attempt {Attempt}/{MaxRetries}).",
+                    releaseTitle, attempt, maxRetries);
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     private static string StripCodeFences(string json)
     {
         if (!json.StartsWith("```", StringComparison.Ordinal))
