@@ -69,11 +69,13 @@ public class GitHubChangelogNotifierFunction
                 if (premiumMode)
                 {
                     var post = await _tweetFormatterService.FormatGitHubChangelogPremiumPostForXAsync(entry, useAi: true);
+                    LogPremiumPost(entry, post);
                     success = await _twitterApiClient.PostTweetAsync(post);
                 }
                 else
                 {
                     var thread = await _tweetFormatterService.FormatGitHubChangelogThreadForXAsync(entry, useAi: true);
+                    LogThread(entry, thread);
                     success = await _twitterApiClient.PostTweetThreadAsync(thread);
                 }
 
@@ -146,6 +148,46 @@ public class GitHubChangelogNotifierFunction
     {
         var value = Environment.GetEnvironmentVariable(envVar);
         return bool.TryParse(value, out var enabled) && enabled;
+    }
+
+    private void LogPremiumPost(GitHubChangelogEntry entry, SocialMediaPost post)
+    {
+        _logger.LogInformation(
+            "GitHub changelog premium post to send for {Title} ({Length} chars, {MediaCount} media item(s)):\n{Post}",
+            entry.Title,
+            post.Text.Length,
+            post.MediaUrlsOrEmpty.Count,
+            post.Text);
+
+        if (post.MediaUrlsOrEmpty.Count > 0)
+        {
+            _logger.LogInformation(
+                "GitHub changelog premium post media for {Title}: {MediaUrls}",
+                entry.Title,
+                string.Join(", ", post.MediaUrlsOrEmpty));
+        }
+    }
+
+    private void LogThread(GitHubChangelogEntry entry, IReadOnlyList<SocialMediaPost> thread)
+    {
+        var renderedThread = string.Join(
+            "\n\n",
+            thread.Select((post, index) => $"[Post {index + 1}/{thread.Count}] ({post.Text.Length} chars)\n{post.Text}"));
+
+        _logger.LogInformation(
+            "GitHub changelog thread to send for {Title} ({Count} post(s)):\n{Thread}",
+            entry.Title,
+            thread.Count,
+            renderedThread);
+
+        var firstPostMedia = thread.FirstOrDefault()?.MediaUrlsOrEmpty ?? [];
+        if (firstPostMedia.Count > 0)
+        {
+            _logger.LogInformation(
+                "GitHub changelog thread first-post media for {Title}: {MediaUrls}",
+                entry.Title,
+                string.Join(", ", firstPostMedia));
+        }
     }
 
     private sealed class GitHubChangelogPostingState
