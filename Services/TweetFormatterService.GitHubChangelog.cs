@@ -40,14 +40,16 @@ public partial class TweetFormatterService
         var safeMaxPostLength = GetGitHubChangelogSafePostLength();
         var plan = await BuildGitHubChangelogSummaryPlanAsync(entry, premiumMode: false, useAi, isWeekly: false);
         var header = TruncateForDisplay(entry.Title, 110);
+        var threadContent = SplitGitHubChangelogSummaryContent(plan.Paragraphs, plan.TopThingsToKnow, $"{header} introduces a new GitHub changelog update.");
         var highlights = FitHighlightsForFirstPost(header, plan.TopThingsToKnow, safeMaxPostLength)
             .Select(item => $"• {SanitizeBullet(item)}")
             .ToList();
         var hashtags = FormatGitHubChangelogHashtags(GetGitHubChangelogHashtags(entry));
         var maxBodyPosts = GitHubChangelogMaxThreadPosts - 2;
-        var bodyPosts = PackParagraphsIntoPosts(plan.Paragraphs, safeMaxPostLength, maxBodyPosts);
+        var bodyPosts = PackParagraphsIntoPosts(threadContent.RemainingParagraphs, safeMaxPostLength, maxBodyPosts);
         var posts = AssembleGitHubChangelogThread(
             header,
+            threadContent.SummarySentence,
             highlights,
             bodyPosts,
             entry.Link,
@@ -68,12 +70,14 @@ public partial class TweetFormatterService
     {
         var plan = await BuildGitHubChangelogSummaryPlanAsync(entry, premiumMode: true, useAi, isWeekly: false);
         var hashtags = FormatGitHubChangelogHashtags(GetGitHubChangelogHashtags(entry));
+        var premiumContent = SplitGitHubChangelogSummaryContent(plan.Paragraphs, plan.TopThingsToKnow, $"{entry.Title} introduces a new GitHub changelog update.");
         var text = BuildGitHubChangelogPremiumPost(
             entry.Title,
             entry.Link,
             hashtags,
+            premiumContent.SummarySentence,
             plan.TopThingsToKnow,
-            plan.Paragraphs);
+            premiumContent.RemainingParagraphs);
 
         return new SocialMediaPost(text);
     }
@@ -360,23 +364,16 @@ public partial class TweetFormatterService
     private static string BuildGitHubChangelogSinglePostFallback(GitHubChangelogEntry entry, int maxLength)
     {
         var plan = BuildFallbackChangelogPlan(entry.Title, entry.SummaryText, entry.ContentHtml, entry.Labels, premiumMode: false, isWeekly: false);
+        var content = SplitGitHubChangelogSummaryContent(plan.Paragraphs, plan.TopThingsToKnow, "GitHub shipped a new changelog update.");
         var bulletLines = plan.TopThingsToKnow
             .Select(item => $"• {StripLeadingDecoration(CollapseWhitespace(item))}")
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .Take(4)
             .ToList();
 
-        if (bulletLines.Count == 0 && !string.IsNullOrWhiteSpace(entry.SummaryText))
-        {
-            bulletLines.Add($"• {TruncateSentence(entry.SummaryText)}");
-        }
-
-        if (bulletLines.Count == 0)
-        {
-            bulletLines.Add("• New GitHub changelog update");
-        }
-
-        var summary = string.Join("\n", bulletLines);
+        var summary = bulletLines.Count == 0
+            ? content.SummarySentence
+            : $"{content.SummarySentence}\n" + string.Join("\n", bulletLines);
         return XPostLengthHelper.FitsWithinLimit(summary, maxLength)
             ? summary
             : XPostLengthHelper.TruncateToWeightedLength(summary, maxLength);
@@ -429,6 +426,7 @@ public partial class TweetFormatterService
 
     private static IReadOnlyList<string> AssembleGitHubChangelogThread(
         string header,
+        string summarySentence,
         IReadOnlyList<string> highlights,
         IReadOnlyList<string> followUpPosts,
         string link,
@@ -438,10 +436,17 @@ public partial class TweetFormatterService
         var posts = new List<string>();
         const string leadIn = "🧵 See thread below 👇";
 
+        var summaryBlock = string.IsNullOrWhiteSpace(summarySentence)
+            ? string.Empty
+            : CollapseWhitespace(summarySentence);
         var highlightBlock = highlights.Count > 0 ? string.Join("\n", highlights) : string.Empty;
-        var firstPost = string.IsNullOrEmpty(highlightBlock)
-            ? $"{header}\n\n{leadIn}"
-            : $"{header}\n\n{highlightBlock}\n\n{leadIn}";
+        var firstPost = string.IsNullOrEmpty(summaryBlock)
+            ? (string.IsNullOrEmpty(highlightBlock)
+                ? $"{header}\n\n{leadIn}"
+                : $"{header}\n\n{highlightBlock}\n\n{leadIn}")
+            : (string.IsNullOrEmpty(highlightBlock)
+                ? $"{header}\n\n{summaryBlock}\n\n{leadIn}"
+                : $"{header}\n\n{summaryBlock}\n{highlightBlock}\n\n{leadIn}");
 
         posts.Add(EnsurePostFits(firstPost, maxPostLength));
         posts.AddRange(followUpPosts.Select(post => EnsurePostFits(post, maxPostLength)));
@@ -587,12 +592,20 @@ public partial class TweetFormatterService
         string header,
         string link,
         string hashtags,
+        string summarySentence,
         IReadOnlyList<string> topThingsToKnow,
         IReadOnlyList<string> paragraphs)
     {
         var sb = new StringBuilder();
         sb.AppendLine(header);
         sb.AppendLine();
+
+        if (!string.IsNullOrWhiteSpace(summarySentence))
+        {
+            sb.AppendLine(CollapseWhitespace(summarySentence));
+            sb.AppendLine();
+        }
+
         sb.AppendLine("Top things to know:");
 
         foreach (var bullet in topThingsToKnow.Take(5))
@@ -663,6 +676,53 @@ public partial class TweetFormatterService
     private static string SanitizeBullet(string text)
         => TruncateForDisplay(StripLeadingDecoration(CollapseWhitespace(text)), 72);
 
+    private static (string SummarySentence, IReadOnlyList<string> RemainingParagraphs) SplitGitHubChangelogSummaryContent(
+        IReadOnlyList<string> paragraphs,
+        IReadOnlyList<string> highlights,
+        string fallbackSummary)
+    {
+        var remainingParagraphs = new List<string>();
+
+        foreach (var paragraph in paragraphs)
+        {
+            var cleanParagraph = CollapseWhitespace(paragraph);
+            if (string.IsNullOrWhiteSpace(cleanParagraph))
+            {
+                continue;
+            }
+
+            var sentences = SplitIntoSentences(cleanParagraph);
+            if (sentences.Count == 0)
+            {
+                continue;
+            }
+
+            var summarySentence = EnsureSentence(sentences[0]);
+            if (sentences.Count > 1)
+            {
+                remainingParagraphs.Add(string.Join(" ", sentences.Skip(1)));
+            }
+
+            remainingParagraphs.AddRange(
+                paragraphs
+                    .SkipWhile(item => !ReferenceEquals(item, paragraph))
+                    .Skip(1)
+                    .Select(CollapseWhitespace)
+                    .Where(item => !string.IsNullOrWhiteSpace(item)));
+
+            return (summarySentence, remainingParagraphs);
+        }
+
+        var fallbackHighlight = highlights
+            .Select(SanitizeBullet)
+            .FirstOrDefault(item => !string.IsNullOrWhiteSpace(item));
+
+        return (!string.IsNullOrWhiteSpace(fallbackHighlight)
+                ? EnsureSentence(fallbackHighlight)
+                : EnsureSentence(fallbackSummary),
+            []);
+    }
+
     private static string StripLeadingDecoration(string text)
         => LeadingDecorationPattern().Replace(text, string.Empty).Trim();
 
@@ -686,6 +746,21 @@ public partial class TweetFormatterService
 
     private static string TruncateSentence(string text)
         => TruncateForDisplay(CollapseWhitespace(text), 72);
+
+    private static string EnsureSentence(string text)
+    {
+        var clean = CollapseWhitespace(text);
+        if (string.IsNullOrWhiteSpace(clean))
+        {
+            return string.Empty;
+        }
+
+        return clean.EndsWith('.', StringComparison.Ordinal) ||
+               clean.EndsWith('!', StringComparison.Ordinal) ||
+               clean.EndsWith('?', StringComparison.Ordinal)
+            ? clean
+            : $"{clean}.";
+    }
 
     private static string TruncateForDisplay(string text, int maxLength)
     {

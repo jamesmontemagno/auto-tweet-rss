@@ -1113,9 +1113,9 @@ Requirements:
         var prompt = $@"Summarize the given GitHub changelog entry.
 
     Output shape:
-    - Prefer ONE short sentence as the default output.
-    - Only use bullet points if there are multiple distinct takeaways worth scanning quickly.
-    - If you use bullets, use 2-3 bullets max, one per line, prefixed with •.
+    - Start with ONE short sentence summary on the first line.
+    - If there are multiple distinct takeaways worth scanning quickly, add 1-3 bullets after that sentence.
+    - When using bullets, put each one on its own line and prefix it with •.
 
     STRICT RULES:
     - Total length MUST be less than {maxLength} characters. Don't cut off a sentence in the middle.
@@ -1230,16 +1230,43 @@ Content:
             return string.Empty;
         }
 
-        // Prefer plain sentence output for single-point summaries.
-        if (lines.Count == 1 && lines[0].StartsWith("•", StringComparison.Ordinal))
+        // Always normalize the first line into a sentence summary.
+        if (lines[0].StartsWith("•", StringComparison.Ordinal))
         {
-            lines[0] = lines[0].TrimStart('•', ' ', '\t').Trim();
+            lines[0] = EnsureSentence(lines[0].TrimStart('•', ' ', '\t').Trim());
+        }
+        else
+        {
+            lines[0] = EnsureSentence(lines[0]);
+        }
+
+        for (var index = 1; index < lines.Count; index++)
+        {
+            if (!lines[index].StartsWith("•", StringComparison.Ordinal))
+            {
+                lines[index] = $"• {lines[index].TrimStart('•', ' ', '\t').Trim()}";
+            }
         }
 
         var normalized = string.Join("\n", lines);
         return XPostLengthHelper.FitsWithinLimit(normalized, maxLength)
             ? normalized
             : XPostLengthHelper.TruncateToWeightedLength(normalized, maxLength);
+    }
+
+    private static string EnsureSentence(string text)
+    {
+        var clean = text.Trim();
+        if (string.IsNullOrWhiteSpace(clean))
+        {
+            return string.Empty;
+        }
+
+        return clean.EndsWith('.', StringComparison.Ordinal) ||
+               clean.EndsWith('!', StringComparison.Ordinal) ||
+               clean.EndsWith('?', StringComparison.Ordinal)
+            ? clean
+            : $"{clean}.";
     }
 
     private static string StripCodeFences(string json)
