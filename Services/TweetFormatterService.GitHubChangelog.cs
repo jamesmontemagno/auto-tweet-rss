@@ -118,11 +118,11 @@ public partial class TweetFormatterService
             summary = BuildGitHubChangelogSinglePostFallback(entry, availableForSummary);
         }
 
-        summary = ReleaseSummarizerService.NormalizeGitHubChangelogSinglePostSummary(summary, availableForSummary);
+        summary = GitHubChangelogSinglePostSummaryNormalizer.Normalize(summary, availableForSummary);
         var text = $"{summary}\n\n{entry.Link}";
         if (!XPostLengthHelper.FitsWithinLimit(text, GitHubChangelogSinglePostMaxLength))
         {
-            summary = ReleaseSummarizerService.NormalizeGitHubChangelogSinglePostSummary(summary, Math.Max(0, availableForSummary - 1));
+            summary = GitHubChangelogSinglePostSummaryNormalizer.Normalize(summary, Math.Max(0, availableForSummary - 1));
             text = $"{summary}\n\n{entry.Link}";
         }
 
@@ -149,9 +149,11 @@ public partial class TweetFormatterService
             .Select(item => $"• {SanitizeBullet(item)}")
             .ToList();
         var hashtags = FormatGitHubChangelogHashtags(GetGitHubChangelogHashtags(entries));
-        var bodyPosts = PackParagraphsIntoPosts(plan.Paragraphs, safeMaxPostLength);
+        var weeklyContent = SplitGitHubChangelogSummaryContent(plan.Paragraphs, plan.TopThingsToKnow, $"This week shipped {entries.Count} GitHub changelog updates.");
+        var bodyPosts = PackParagraphsIntoPosts(weeklyContent.RemainingParagraphs, safeMaxPostLength);
         var posts = AssembleGitHubChangelogThread(
             header,
+            weeklyContent.SummarySentence,
             highlights,
             bodyPosts,
             "https://github.blog/changelog/",
@@ -176,12 +178,14 @@ public partial class TweetFormatterService
         var plan = await BuildGitHubChangelogWeeklySummaryPlanAsync(entries, weekStartPacific, weekEndPacific, premiumMode: true, useAi);
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var hashtags = FormatGitHubChangelogHashtags(GetGitHubChangelogHashtags(entries));
+        var premiumContent = SplitGitHubChangelogSummaryContent(plan.Paragraphs, plan.TopThingsToKnow, $"This week shipped {entries.Count} GitHub changelog updates.");
         var text = BuildGitHubChangelogPremiumPost(
             $"🗓️ GitHub weekly recap ({dateRange})",
             "https://github.blog/changelog/",
             hashtags,
+            premiumContent.SummarySentence,
             plan.TopThingsToKnow,
-            plan.Paragraphs);
+            premiumContent.RemainingParagraphs);
 
         return new SocialMediaPost(text);
     }
@@ -372,7 +376,7 @@ public partial class TweetFormatterService
         var summary = bulletLines.Count == 0
             ? content.SummarySentence
             : $"{content.SummarySentence}\n\n{string.Join("\n", bulletLines)}";
-        return ReleaseSummarizerService.NormalizeGitHubChangelogSinglePostSummary(summary, maxLength);
+        return GitHubChangelogSinglePostSummaryNormalizer.Normalize(summary, maxLength);
     }
 
     private static string BuildGitHubChangelogAiPayload(GitHubChangelogEntry entry)
