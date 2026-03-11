@@ -11,7 +11,8 @@ on:
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
-  DOTNET_VERSION: '10.0.103' # set this to the dotnet version to use
+  DOTNET_VERSION: '10.0' # set this to the dotnet version to use
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   build-and-deploy:
@@ -22,10 +23,10 @@ jobs:
 
     steps:
       - name: 'Checkout GitHub Action'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
-        uses: actions/setup-dotnet@v1
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -37,14 +38,14 @@ jobs:
           popd
       
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v2.3.0
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_9032FC6D0CD74695BE927F50D104C1D3 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_8E9842B3C80547DD81974EC2F283BB5C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_FF9DBECD8A44402FABFECFC19E4560F4 }}
 
       - name: 'Run Azure Functions Action'
-        uses: Azure/functions-action@v1
+        uses: Azure/functions-action@v1.5.4
         id: fa
         with:
           app-name: 'copilotclichangelog'
