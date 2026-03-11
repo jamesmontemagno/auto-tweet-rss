@@ -62,7 +62,7 @@ public class ReleaseSummarizerService
         try
         {
             var totalItemCount = CountItemsInRelease(releaseContent, feedType);
-            var systemPrompt = GetSystemPrompt();
+            var systemPrompt = ReleaseSummarizerCliSdkPrompts.GetReleaseSummarySystemPrompt();
             var userPrompt = BuildUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, feedType);
             
             var messages = new List<Microsoft.Extensions.AI.ChatMessage>
@@ -92,8 +92,6 @@ public class ReleaseSummarizerService
             throw;
         }
     }
-
-    private static string GetSystemPrompt() => ReleaseSummarizerPrompts.GetSystemPrompt();
 
     private static readonly Regex H3HeadingPattern = new(@"<h3[^>]*>(.*?)</h3>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
@@ -262,7 +260,36 @@ public class ReleaseSummarizerService
     }
 
     private static string BuildUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, string feedType)
-        => ReleaseSummarizerPrompts.BuildUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, feedType);
+    {
+        if (feedType.StartsWith("vscode", StringComparison.OrdinalIgnoreCase))
+        {
+            var estimatedCharsPerItem = 40;
+            var reserveForSuffix = totalItemCount > 5 ? 15 : 0;
+            var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
+            maxItems = Math.Min(maxItems, 10);
+            if (totalItemCount > 0)
+            {
+                maxItems = Math.Min(maxItems, totalItemCount);
+            }
+
+            if (feedType == "vscode-week")
+            {
+                return ReleaseSummarizerVSCodePrompts.BuildVSCodeWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
+            }
+            if (feedType == "vscode-ai")
+            {
+                return ReleaseSummarizerVSCodePrompts.BuildVSCodeAiUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, Math.Min(maxItems, 8));
+            }
+            if (feedType == "vscode-week-ai")
+            {
+                return ReleaseSummarizerVSCodePrompts.BuildVSCodeAiWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, Math.Min(maxItems, 8));
+            }
+
+            return ReleaseSummarizerVSCodePrompts.BuildVSCodeUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
+        }
+
+        return ReleaseSummarizerCliSdkPrompts.BuildCliOrSdkUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, feedType);
+    }
 
     /// <summary>
     /// Uses AI to generate a ranked list of features for thread assembly.
@@ -281,22 +308,11 @@ public class ReleaseSummarizerService
         var totalItemCount = CountItemsInRelease(releaseContent, feedType);
         var cleaned = PrepareContentForAi(releaseContent);
 
-        var prompt = $@"Extract and rank all features from this {feedType} release: {releaseTitle}
-
-Release Content:
-{cleaned}
-
-Total items detected: {totalItemCount}
-
-Return ALL items ranked by importance. Respond with JSON only. Example:
-{{
-  ""totalCount"": 8,
-  ""items"": [""✨ New interactive setup flow for easier onboarding"", ""⚡ 3x faster workspace indexing"", ""🐛 Fixed auth token refresh edge case"", ""🔒 Hardened credential storage"", ""📖 Updated getting started docs""]
-}}";
+                var prompt = ReleaseSummarizerCliSdkPrompts.BuildThreadPlanUserPrompt(releaseTitle, cleaned, feedType, totalItemCount);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new(ChatRole.System, GetThreadPlanSystemPrompt()),
+            new(ChatRole.System, ReleaseSummarizerCliSdkPrompts.GetThreadPlanSystemPrompt()),
             new(ChatRole.User, prompt)
         };
 
@@ -392,37 +408,11 @@ Return ALL items ranked by importance. Respond with JSON only. Example:
         var totalItemCount = CountItemsInRelease(releaseContent, feedType);
         var cleaned = PrepareContentForAi(releaseContent);
 
-        var prompt = $@"Create a Premium X mega-post plan for this {feedType} release: {releaseTitle}
-
-Release Content:
-{cleaned}
-
-Constraints:
-- Premium X maximum post length: {maxLength} characters
-- Organize content into these exact sections: Top features, Enhancements, Bug fixes, Misc
-- Return concise, emoji-prefixed items
-- Emojify EVERY item with a relevant emoji
-- Use varied, context-aware emojis across items; do NOT use the same emoji for every line
-- Match emoji style to the section when possible:
-    - Top features: ✨ 🎉 🚀 🔥
-    - Enhancements: ⚡ 🔧 🎨 🛠️
-    - Bug fixes: 🐛 🩹 ✅
-    - Misc: 📖 🧰 🔒 🏗️
-- Avoid repeating the exact same emoji on adjacent items unless it is clearly the best fit
-- Include as many distinct updates as possible while staying concise
-
-Respond with JSON only. Example:
-{{
-  ""totalCount"": 24,
-    ""topFeatures"": [""✨ Smarter workspace context selection for prompts"", ""🚀 New remote agent setup flow""],
-    ""enhancements"": [""⚡ Faster indexing for large repositories"", ""🎨 Cleaner inline progress states""],
-    ""bugFixes"": [""🐛 Fixed auth refresh edge cases"", ""🩹 Resolved terminal paste regression""],
-    ""misc"": [""📖 Updated setup and troubleshooting docs"", ""🔒 Hardened token handling defaults""]
-}}";
+                var prompt = ReleaseSummarizerCliSdkPrompts.BuildPremiumPostUserPrompt(releaseTitle, cleaned, feedType, maxLength);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new(ChatRole.System, GetPremiumPostSystemPrompt()),
+            new(ChatRole.System, ReleaseSummarizerCliSdkPrompts.GetPremiumPostSystemPrompt()),
             new(ChatRole.User, prompt)
         };
 
@@ -541,35 +531,11 @@ Respond with JSON only. Example:
         const int maxRetries = 3;
         var cleaned = PrepareContentForAi($"{summaryText}\n\n{releaseContent}");
         var labelText = labels.Count > 0 ? string.Join(", ", labels) : "none";
-        var prompt = $@"Create a social post plan for this GitHub Changelog {(isWeekly ? "weekly recap" : "entry")}: {releaseTitle}
-
-Labels:
-{labelText}
-
-Summary:
-{summaryText}
-
-Content:
-{cleaned}
-
-Requirements:
-- Return JSON only
-- Produce 2-4 short bullet highlights under topThingsToKnow
-- Produce 1-2 concise paragraphs under paragraphs
-- Bullets should be plain text without bullet characters
-- Keep bullets very short: prefer 20-55 characters, fragments over full sentences
-- Do not repeat or closely paraphrase the changelog title; assume the title is already shown in the post header
-- Focus each bullet on a distinct capability, change, or outcome
-- Paragraphs should explain what changed and why it matters
-- {(premiumMode ? "Premium paragraphs can use richer detail, but still stay concise." : "Each paragraph must stay under 200 characters for thread follow-up posts.")}
-- Never include URLs, hashtags, usernames, issue numbers, or markdown headings
-- Keep wording concrete and helpful for developers
-- {(premiumMode ? "Use slightly richer detail because this can be a Premium X post." : "Keep paragraphs concise enough to fit a social thread follow-up post.")}
-- {(isWeekly ? "Synthesize themes across the week instead of repeating every title." : "Focus on the single changelog entry and its key takeaways.")}";
+        var prompt = ReleaseSummarizerGitHubChangelogPrompts.BuildChangelogPlanUserPrompt(releaseTitle, summaryText, cleaned, labelText, premiumMode, isWeekly);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new(ChatRole.System, GetGitHubChangelogSystemPrompt()),
+            new(ChatRole.System, ReleaseSummarizerGitHubChangelogPrompts.GetChangelogPlanSystemPrompt()),
             new(ChatRole.User, prompt)
         };
 
@@ -614,9 +580,9 @@ Requirements:
                 plan.TopThingsToKnow = plan.TopThingsToKnow
                     .Select(item => item.Trim())
                     .Where(item => !string.IsNullOrWhiteSpace(item))
-                    .Select(ShortenGitHubChangelogBullet)
+                    .Select(GitHubChangelogSinglePostSummaryNormalizer.ShortenBullet)
                     .Where(item => !string.IsNullOrWhiteSpace(item))
-                    .Where(item => !LooksLikeTitleEcho(item, releaseTitle))
+                    .Where(item => !GitHubChangelogSinglePostSummaryNormalizer.LooksLikeTitleEcho(item, releaseTitle))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Take(4)
                     .ToList();
@@ -682,45 +648,11 @@ Requirements:
     {
         const int maxRetries = 3;
         var cleaned = PrepareContentForAi(releaseContent);
-        var prompt = $@"Summarize the given GitHub changelog entry.
-
-    Output shape:
-    - Start with ONE short sentence summary on the first line.
-    - Leave ONE blank line after that first sentence.
-    - Only add 1-2 bullets if they are truly needed for the most important extra takeaways.
-    - When using bullets, put each one on its own line and prefix it with •.
-
-    STRICT RULES:
-    - Total length MUST be less than {maxLength} characters. Don't cut off a sentence in the middle.
-    - Keep wording concise, direct, and useful for devs.
-    - NO emoji ever
-    - NO hashtags ever
-    - NO @mentions ever
-    - Never include raw handles, commands with reviewer handles, or tagged account names
-    - NO filler words
-    - Instead of using ""and"" use + or & when natural
-    - Active voice only
-    - Simple words only
-    - Shorten ""administrators"" to ""admins"", ""developers"" to ""devs"", ""organizations"" to ""orgs"", ""repositories"" to ""repos"", ""pull requests"" to ""PRs"", when helpful.
-    - Focus on what devs can do now + what's now possible
-    - Implicit second person perspective
-    - Use Oxford commas
-    - NO em dashes
-    - Do NOT mention or tag any account
-    - Use whitespace Unicode character (U+200B or similar) to prevent unwanted URL unfurling when needed
-    - ONLY summarize what is in the existing content - do NOT make anything up or use outside information
-    - NEVER include any preface or preamble
-    - Return plain text only
-
-Title:
-{releaseTitle}
-
-Content:
-{cleaned}";
+        var prompt = ReleaseSummarizerGitHubChangelogPrompts.BuildSinglePostUserPrompt(releaseTitle, cleaned, maxLength);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new(ChatRole.System, "You write concise GitHub changelog social posts. Return plain text only, with no markdown code fences."),
+            new(ChatRole.System, ReleaseSummarizerGitHubChangelogPrompts.GetSinglePostSystemPrompt()),
             new(ChatRole.User, prompt)
         };
 
@@ -812,19 +744,4 @@ Content:
             : DefaultThreadPlanTimeoutSeconds;
     }
 
-    private static string GetThreadPlanSystemPrompt() => ReleaseSummarizerPrompts.GetThreadPlanSystemPrompt();
-
-    private static string GetPremiumPostSystemPrompt() => ReleaseSummarizerPrompts.GetPremiumPostSystemPrompt();
-
-    private static string GetGitHubChangelogSystemPrompt() => ReleaseSummarizerPrompts.GetGitHubChangelogSystemPrompt();
-
-    private static string ShortenGitHubChangelogBullet(string bullet)
-    {
-        return GitHubChangelogSinglePostSummaryNormalizer.ShortenBullet(bullet);
-    }
-
-    private static bool LooksLikeTitleEcho(string bullet, string releaseTitle)
-    {
-        return GitHubChangelogSinglePostSummaryNormalizer.LooksLikeTitleEcho(bullet, releaseTitle);
-    }
 }

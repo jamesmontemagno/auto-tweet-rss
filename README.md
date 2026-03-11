@@ -411,16 +411,35 @@ auto-tweet-rss/
 │   ├── VSCodeWeeklyRecapFunction.cs # Timer trigger for VS Code weekly recap (Saturday)
 │   └── TestSummaryFunction.cs     # HTTP endpoint for testing AI summaries
 └── Services/
-    ├── RssFeedService.cs          # Fetches and filters RSS feeds
-    ├── OAuth1Helper.cs            # HMAC-SHA1 signature for Twitter
-    ├── TwitterApiClient.cs        # Direct HTTP calls to Twitter API v2
-   ├── VSCodeTwitterApiClient.cs  # Twitter client for VS Code updates account
-   ├── BlueskyApiClient.cs        # Bluesky (AT Protocol) client
-   ├── VSCodeSocialMediaPublisher.cs # Publishes VS Code posts to all configured platforms
-   ├── ISocialMediaClient.cs      # Abstraction for social media clients
-    ├── TweetFormatterService.cs   # Formats tweets for both CLI and SDK
-    ├── ReleaseSummarizerService.cs # AI-powered release note summarization
-    └── StateTrackingService.cs    # Blob storage for last processed IDs
+   ├── Feeds/
+   │   ├── RssFeedService.cs                  # Fetches and filters RSS feeds
+   │   ├── GitHubChangelogFeedService.cs      # Fetches/parses GitHub Changelog RSS
+   │   └── VSCodeReleaseNotesService.cs       # Fetches/parses VS Code release notes
+   ├── Formatting/
+   │   ├── TweetFormatterService.cs           # Formats thread and post content
+   │   ├── TweetFormatterService.GitHubChangelog.cs # GitHub changelog formatter partial
+   │   └── XPostLengthHelper.cs               # Weighted length/truncation utilities
+   ├── Social/
+   │   ├── Auth/
+   │   │   └── OAuth1Helper.cs                # HMAC-SHA1 signature helper for X
+   │   ├── Twitter/
+   │   │   ├── TwitterApiClient.cs            # Direct HTTP calls to X/Twitter API v2
+   │   │   ├── VSCodeTwitterApiClient.cs      # X client for VS Code account
+   │   │   └── GitHubChangelogTwitterApiClient.cs # X client for GitHub changelog account
+   │   ├── BlueskyApiClient.cs                # Bluesky (AT Protocol) client
+   │   ├── ISocialMediaClient.cs              # Abstraction for social clients
+   │   ├── SocialMediaPost.cs                 # Post payload model
+   │   └── VSCodeSocialMediaPublisher.cs      # Publishes VS Code posts to configured platforms
+   ├── State/
+   │   └── StateTrackingService.cs            # Blob storage for last processed IDs
+   └── Summarization/
+      ├── ReleaseSummarizerService.cs        # AI-powered summarization orchestrator
+      ├── ReleaseSummarizerPrompts.cs        # Prompt templates/builders
+      ├── ReleaseSummaryPlans.cs             # Plan/result models for AI output
+      ├── GitHubChangelogSinglePostSummaryNormalizer.cs # GitHub single-post cleanup helper
+      └── VSCodeSummaryCacheService.cs       # Caches VS Code summaries
+
+> Note: Namespaces remain `AutoTweetRss.Services` after this folder regrouping.
 ```
 
 ## Deployment to Azure
