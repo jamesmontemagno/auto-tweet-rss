@@ -11,6 +11,7 @@ on:
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
+  AZURE_FUNCTIONAPP_PUBLISH_PATH: './output'
   DOTNET_VERSION: '10.0' # set this to the dotnet version to use
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -30,11 +31,11 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: 'Resolve Project Dependencies Using Dotnet'
+      - name: 'Publish Function App'
         shell: bash
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build auto-tweet-rss.sln --configuration Release --output ./output
+          dotnet publish AutoTweetRss.csproj --configuration Release --output '${{ env.AZURE_FUNCTIONAPP_PUBLISH_PATH }}'
           popd
       
       - name: Login to Azure
@@ -50,5 +51,5 @@ jobs:
         with:
           app-name: 'copilotclichangelog'
           slot-name: 'Production'
-          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+          package: '${{ env.AZURE_FUNCTIONAPP_PUBLISH_PATH }}'
           
