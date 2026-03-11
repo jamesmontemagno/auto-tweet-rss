@@ -118,17 +118,15 @@ public partial class TweetFormatterService
             summary = BuildGitHubChangelogSinglePostFallback(entry, availableForSummary);
         }
 
-        summary = XPostLengthHelper.FitsWithinLimit(summary, availableForSummary)
-            ? summary
-            : XPostLengthHelper.TruncateToWeightedLength(summary, availableForSummary);
+        summary = ReleaseSummarizerService.NormalizeGitHubChangelogSinglePostSummary(summary, availableForSummary);
         var text = $"{summary}\n\n{entry.Link}";
         if (!XPostLengthHelper.FitsWithinLimit(text, GitHubChangelogSinglePostMaxLength))
         {
-            summary = XPostLengthHelper.TruncateToWeightedLength(summary, availableForSummary);
+            summary = ReleaseSummarizerService.NormalizeGitHubChangelogSinglePostSummary(summary, Math.Max(0, availableForSummary - 1));
             text = $"{summary}\n\n{entry.Link}";
         }
 
-        return new SocialMediaPost(text, SelectPreferredMedia(entry));
+        return new SocialMediaPost(text);
     }
 
     public async Task<IReadOnlyList<SocialMediaPost>> FormatGitHubChangelogWeeklyRecapThreadForXAsync(
@@ -373,10 +371,8 @@ public partial class TweetFormatterService
 
         var summary = bulletLines.Count == 0
             ? content.SummarySentence
-            : $"{content.SummarySentence}\n" + string.Join("\n", bulletLines);
-        return XPostLengthHelper.FitsWithinLimit(summary, maxLength)
-            ? summary
-            : XPostLengthHelper.TruncateToWeightedLength(summary, maxLength);
+            : $"{content.SummarySentence}\n\n{string.Join("\n", bulletLines)}";
+        return ReleaseSummarizerService.NormalizeGitHubChangelogSinglePostSummary(summary, maxLength);
     }
 
     private static string BuildGitHubChangelogAiPayload(GitHubChangelogEntry entry)
@@ -755,9 +751,7 @@ public partial class TweetFormatterService
             return string.Empty;
         }
 
-        return clean.EndsWith('.', StringComparison.Ordinal) ||
-               clean.EndsWith('!', StringComparison.Ordinal) ||
-               clean.EndsWith('?', StringComparison.Ordinal)
+        return clean[^1] is '.' or '!' or '?'
             ? clean
             : $"{clean}.";
     }

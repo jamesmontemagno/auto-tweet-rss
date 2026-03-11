@@ -23,6 +23,9 @@ public class ReleaseSummarizerService
     private static readonly Regex BulletLinePattern = new(@"^\s*[-*]\s+", RegexOptions.Compiled);
     private static readonly Regex MoreIndicatorLinePattern = new(@"^\s*\.\.\.and\s+(\d+)\s+more\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex EmojiFeatureLinePattern = new(@"^\s*[\p{So}\p{Sk}]", RegexOptions.Compiled);
+    private static readonly Regex GitHubHandlePattern = new(@"(?<![\w/])@[A-Za-z0-9][A-Za-z0-9-]*", RegexOptions.Compiled);
+    private static readonly Regex HashtagPattern = new(@"(?<!\w)#[A-Za-z0-9_]+", RegexOptions.Compiled);
+    private static readonly Regex SpaceBeforePunctuationPattern = new(@"\s+([,.;:!?])", RegexOptions.Compiled);
 
     public ReleaseSummarizerService(
         ILogger<ReleaseSummarizerService> logger,
@@ -1114,7 +1117,8 @@ Requirements:
 
     Output shape:
     - Start with ONE short sentence summary on the first line.
-    - If there are multiple distinct takeaways worth scanning quickly, add 1-3 bullets after that sentence.
+    - Leave ONE blank line after that first sentence.
+    - Only add 1-2 bullets if they are truly needed for the most important extra takeaways.
     - When using bullets, put each one on its own line and prefix it with •.
 
     STRICT RULES:
@@ -1122,6 +1126,8 @@ Requirements:
     - Keep wording concise, direct, and useful for devs.
     - NO emoji ever
     - NO hashtags ever
+    - NO @mentions ever
+    - Never include raw handles, commands with reviewer handles, or tagged account names
     - NO filler words
     - Instead of using ""and"" use + or & when natural
     - Active voice only
@@ -1131,7 +1137,7 @@ Requirements:
     - Implicit second person perspective
     - Use Oxford commas
     - NO em dashes
-    - Do NOT mention or tag @GitHub
+    - Do NOT mention or tag any account
     - Use whitespace Unicode character (U+200B or similar) to prevent unwanted URL unfurling when needed
     - ONLY summarize what is in the existing content - do NOT make anything up or use outside information
     - NEVER include any preface or preamble
@@ -1212,7 +1218,7 @@ Content:
         return null;
     }
 
-    private static string NormalizeGitHubChangelogSinglePostSummary(string summary, int maxLength)
+    internal static string NormalizeGitHubChangelogSinglePostSummary(string summary, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(summary))
         {
@@ -1230,28 +1236,98 @@ Content:
             return string.Empty;
         }
 
-        // Always normalize the first line into a sentence summary.
-        if (lines[0].StartsWith("•", StringComparison.Ordinal))
+        var summarySentence = lines[0].StartsWith("•", StringComparison.Ordinal)
+            ? lines[0].TrimStart('•', ' ', '\t').Trim()
+            : lines[0];
+        summarySentence = EnsureSentence(SanitizeGitHubChangelogSinglePostLine(summarySentence));
+        if (string.IsNullOrWhiteSpace(summarySentence))
         {
-            lines[0] = EnsureSentence(lines[0].TrimStart('•', ' ', '\t').Trim());
-        }
-        else
-        {
-            lines[0] = EnsureSentence(lines[0]);
+            return string.Empty;
         }
 
+        var bullets = new List<string>();
         for (var index = 1; index < lines.Count; index++)
         {
-            if (!lines[index].StartsWith("•", StringComparison.Ordinal))
+            var bulletText = SanitizeGitHubChangelogSinglePostLine(lines[index].TrimStart('•', ' ', '\t').Trim());
+            if (!LooksLikeMeaningfulGitHubChangelogBullet(bulletText))
             {
-                lines[index] = $"• {lines[index].TrimStart('•', ' ', '\t').Trim()}";
+                continue;
             }
+
+            bullets.Add($"• {bulletText}");
         }
 
-        var normalized = string.Join("\n", lines);
-        return XPostLengthHelper.FitsWithinLimit(normalized, maxLength)
-            ? normalized
-            : XPostLengthHelper.TruncateToWeightedLength(normalized, maxLength);
+        return FitGitHubChangelogSinglePostSummary(summarySentence, bullets, maxLength);
+    }
+
+    private static string FitGitHubChangelogSinglePostSummary(string summarySentence, IReadOnlyList<string> bullets, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(summarySentence) || maxLength <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (!XPostLengthHelper.FitsWithinLimit(summarySentence, maxLength))
+        {
+            return TruncateGitHubChangelogSentence(summarySentence, maxLength);
+        }
+
+        if (bullets.Count == 0)
+        {
+            return summarySentence;
+        }
+
+        var includedBullets = new List<string>();
+        foreach (var bullet in bullets.Take(2))
+        {
+            var candidateBullets = includedBullets.Concat([bullet]).ToList();
+            var candidate = $"{summarySentence}\n\n{string.Join("\n", candidateBullets)}";
+            if (!XPostLengthHelper.FitsWithinLimit(candidate, maxLength))
+            {
+                break;
+            }
+
+            includedBullets = candidateBullets;
+        }
+
+        return includedBullets.Count == 0
+            ? summarySentence
+            : $"{summarySentence}\n\n{string.Join("\n", includedBullets)}";
+    }
+
+    private static string SanitizeGitHubChangelogSinglePostLine(string text)
+    {
+        var clean = GitHubHandlePattern.Replace(text, string.Empty);
+        clean = HashtagPattern.Replace(clean, string.Empty);
+        clean = WhitespacePattern.Replace(clean, " ").Trim();
+        clean = SpaceBeforePunctuationPattern.Replace(clean, "$1");
+        return clean.Trim();
+    }
+
+    private static bool LooksLikeMeaningfulGitHubChangelogBullet(string text)
+        => !string.IsNullOrWhiteSpace(text)
+            && text.Any(char.IsLetterOrDigit)
+            && text.Count(char.IsLetterOrDigit) >= 8;
+
+    private static string TruncateGitHubChangelogSentence(string sentence, int maxLength)
+    {
+        var truncated = XPostLengthHelper.TruncateToWeightedLength(sentence, maxLength);
+        if (!truncated.EndsWith("...", StringComparison.Ordinal))
+        {
+            return truncated;
+        }
+
+        var withoutEllipsis = truncated[..^3].TrimEnd();
+        var lastSpace = withoutEllipsis.LastIndexOf(' ');
+        if (lastSpace <= 0)
+        {
+            return truncated;
+        }
+
+        var candidate = withoutEllipsis[..lastSpace].TrimEnd(' ', ',', ';', ':') + "...";
+        return XPostLengthHelper.FitsWithinLimit(candidate, maxLength)
+            ? candidate
+            : truncated;
     }
 
     private static string EnsureSentence(string text)
@@ -1262,9 +1338,7 @@ Content:
             return string.Empty;
         }
 
-        return clean.EndsWith('.', StringComparison.Ordinal) ||
-               clean.EndsWith('!', StringComparison.Ordinal) ||
-               clean.EndsWith('?', StringComparison.Ordinal)
+        return clean[^1] is '.' or '!' or '?'
             ? clean
             : $"{clean}.";
     }
