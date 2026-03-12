@@ -54,7 +54,8 @@ public partial class TweetFormatterService
             bodyPosts,
             entry.Link,
             hashtags,
-            safeMaxPostLength);
+            safeMaxPostLength,
+            MaxTweetLength);
 
         var preferredMedia = SelectPreferredMedia(entry);
         return posts
@@ -158,7 +159,8 @@ public partial class TweetFormatterService
             bodyPosts,
             "https://github.blog/changelog/",
             hashtags,
-            safeMaxPostLength);
+            safeMaxPostLength,
+            MaxTweetLength);
 
         return posts.Select(text => new SocialMediaPost(text)).ToList();
     }
@@ -431,8 +433,22 @@ public partial class TweetFormatterService
         IReadOnlyList<string> followUpPosts,
         string link,
         string hashtags,
-        int maxPostLength)
+        int maxPostLength,
+        int singlePostMaxLength)
     {
+        var singlePost = TryBuildGitHubChangelogSinglePost(
+            header,
+            summarySentence,
+            highlights,
+            followUpPosts,
+            link,
+            hashtags,
+            singlePostMaxLength);
+        if (singlePost != null)
+        {
+            return [singlePost];
+        }
+
         var posts = new List<string>();
         const string leadIn = "🧵 See thread below 👇";
 
@@ -488,6 +504,55 @@ public partial class TweetFormatterService
         }
 
         return posts;
+    }
+
+    private static string? TryBuildGitHubChangelogSinglePost(
+        string header,
+        string summarySentence,
+        IReadOnlyList<string> highlights,
+        IReadOnlyList<string> followUpPosts,
+        string link,
+        string hashtags,
+        int maxPostLength)
+    {
+        var sections = new List<string>();
+        if (!string.IsNullOrWhiteSpace(header))
+        {
+            sections.Add(CollapseWhitespace(header));
+        }
+
+        var summaryBlock = string.IsNullOrWhiteSpace(summarySentence)
+            ? null
+            : CollapseWhitespace(summarySentence);
+        if (!string.IsNullOrWhiteSpace(summaryBlock))
+        {
+            sections.Add(summaryBlock);
+        }
+
+        if (highlights.Count > 0)
+        {
+            sections.Add(string.Join("\n", highlights.Where(item => !string.IsNullOrWhiteSpace(item))));
+        }
+
+        if (followUpPosts.Count > 0)
+        {
+            sections.Add(string.Join("\n\n", followUpPosts.Where(post => !string.IsNullOrWhiteSpace(post))));
+        }
+
+        if (!string.IsNullOrWhiteSpace(link))
+        {
+            sections.Add(link);
+        }
+
+        if (!string.IsNullOrWhiteSpace(hashtags))
+        {
+            sections.Add(hashtags);
+        }
+
+        var candidate = string.Join("\n\n", sections.Where(section => !string.IsNullOrWhiteSpace(section)));
+        return !string.IsNullOrWhiteSpace(candidate) && XPostLengthHelper.FitsWithinLimit(candidate, maxPostLength)
+            ? candidate
+            : null;
     }
 
     private static string EnsurePostFits(string text, int maxPostLength)

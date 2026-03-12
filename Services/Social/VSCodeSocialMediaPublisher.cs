@@ -112,16 +112,30 @@ public class VSCodeSocialMediaPublisher
             try
             {
                 var posts = postsSelector(client);
-                _logger.LogInformation("Posting {Count}-post thread to {Platform}.", posts.Count, client.PlatformName);
-                var success = await client.PostThreadAsync(posts);
+                bool success;
+                if (posts.Count == 1)
+                {
+                    _logger.LogInformation("Posting single post to {Platform}.", client.PlatformName);
+                    success = await client.PostAsync(posts[0]);
+                }
+                else
+                {
+                    _logger.LogInformation("Posting {Count}-post thread to {Platform}.", posts.Count, client.PlatformName);
+                    success = await client.PostThreadAsync(posts);
+                }
+
                 if (success)
                 {
-                    _logger.LogInformation("Successfully posted thread to {Platform}.", client.PlatformName);
+                    _logger.LogInformation(
+                        posts.Count == 1 ? "Successfully posted single post to {Platform}." : "Successfully posted thread to {Platform}.",
+                        client.PlatformName);
                     anySuccess = true;
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to post thread to {Platform}.", client.PlatformName);
+                    _logger.LogWarning(
+                        posts.Count == 1 ? "Failed to post single post to {Platform}." : "Failed to post thread to {Platform}.",
+                        client.PlatformName);
                 }
             }
             catch (Exception ex)

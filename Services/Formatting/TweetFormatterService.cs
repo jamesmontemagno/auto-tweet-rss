@@ -908,7 +908,7 @@ public partial class TweetFormatterService
         var header = string.Join("\n",
             $"🗓️ Weekly recap ({dateRange})",
             $"🚀 {releaseCount} {releaseWord}",
-            $"🛠️ {improvementCount} {improvementWord} 🧵");
+            $"🛠️ {improvementCount} {improvementWord}");
 
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
         ThreadPlan? plan = null;
@@ -1095,7 +1095,7 @@ public partial class TweetFormatterService
             ? FormatShortDate(endDate)
             : $"{FormatShortDate(startDate)}-{FormatShortDate(endDate)}";
         var featureWord = featureCount == 1 ? "feature" : "features";
-        var header = $"🚀 Insiders Update - {dateLabel}\n{featureCount} new {featureWord} 🧵";
+        var header = $"🚀 Insiders Update - {dateLabel}\n{featureCount} new {featureWord}";
 
         return BuildThreadFromSummaryLines(header, fullSummary, featureCount, url, VSCodeHashtag, maxPostLength, useXWeightedLength);
     }
@@ -1188,7 +1188,7 @@ public partial class TweetFormatterService
     {
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var featureWord = featureCount == 1 ? "feature" : "features";
-        var header = $"🗓️ Weekly recap ({dateRange})\n✨ {featureCount} new {featureWord} 🧵";
+        var header = $"🗓️ Weekly recap ({dateRange})\n✨ {featureCount} new {featureWord}";
 
         // Use a generous length to capture all highlights for thread splitting
         const int ThreadSummaryLength = 800;
@@ -1263,6 +1263,12 @@ public partial class TweetFormatterService
         int maxPostLength,
         bool useXWeightedLength)
     {
+        var singlePost = TryBuildSinglePost(header, highlights, followUpGroups, link, hashtag, maxPostLength, useXWeightedLength);
+        if (singlePost != null)
+        {
+            return [singlePost];
+        }
+
         var posts = new List<string>();
 
         // --- First post ---
@@ -1331,6 +1337,75 @@ public partial class TweetFormatterService
         }
 
         return posts;
+    }
+
+    private static string? TryBuildSinglePost(
+        string header,
+        IReadOnlyList<string> highlights,
+        IReadOnlyList<string> followUpGroups,
+        string link,
+        string hashtag,
+        int maxPostLength,
+        bool useXWeightedLength)
+    {
+        var bodyLines = highlights
+            .Concat(followUpGroups
+                .SelectMany(group => group
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Trim())
+                    .Where(line => !string.IsNullOrWhiteSpace(line))))
+            .ToList();
+
+        var sections = new List<string>();
+        var normalizedHeader = RemoveTrailingThreadMarker(header);
+        if (!string.IsNullOrWhiteSpace(normalizedHeader))
+        {
+            sections.Add(normalizedHeader);
+        }
+
+        if (bodyLines.Count > 0)
+        {
+            sections.Add(string.Join("\n", bodyLines));
+        }
+
+        if (!string.IsNullOrWhiteSpace(link))
+        {
+            sections.Add(link);
+        }
+
+        if (!string.IsNullOrWhiteSpace(hashtag))
+        {
+            sections.Add(hashtag);
+        }
+
+        var candidate = string.Join("\n\n", sections.Where(section => !string.IsNullOrWhiteSpace(section)));
+        return !string.IsNullOrWhiteSpace(candidate) && FitsWithinLimit(candidate, maxPostLength, useXWeightedLength)
+            ? candidate
+            : null;
+    }
+
+    private static string RemoveTrailingThreadMarker(string text)
+    {
+        var lines = text
+            .Split('\n', StringSplitOptions.None)
+            .Select(RemoveTrailingThreadMarkerFromLine);
+
+        return string.Join("\n", lines).Trim();
+    }
+
+    private static string RemoveTrailingThreadMarkerFromLine(string line)
+    {
+        const string threadMarker = "🧵";
+        var trimmedLine = line.TrimEnd();
+        if (!trimmedLine.EndsWith(threadMarker, StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        var markerIndex = trimmedLine.LastIndexOf(threadMarker, StringComparison.Ordinal);
+        return markerIndex >= 0
+            ? trimmedLine[..markerIndex].TrimEnd()
+            : trimmedLine;
     }
 
     /// <summary>Extracts a plain list of emoji-prefixed feature strings from HTML release content.</summary>
