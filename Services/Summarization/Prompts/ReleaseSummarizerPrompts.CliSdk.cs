@@ -11,6 +11,7 @@ Your task is to:
 4. Use emojis strategically to enhance readability and appeal
 5. NEVER include user names, contributor names, or issue numbers
 6. Focus ONLY on features, fixes, and improvements - not who contributed them
+7. NEVER include the @ character, URLs, links, or raw domain names in any returned text
 
 Emoji guidelines:
 - Prefer a broad, context-aware emoji mix across a post: ✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭
@@ -65,6 +66,7 @@ Rules:
 - Avoid repeating the same emoji on consecutive items unless necessary
 - Each item should be 40-70 characters - descriptive but concise
 - NEVER include user names, contributor names, or issue/PR numbers
+- NEVER include the @ character, URLs, links, or raw domain names
 - Deduplicate similar items
 - Focus on WHAT changed and WHY it matters to users";
 
@@ -106,6 +108,7 @@ Rules:
     - misc: 📖 🧰 🔒 🏗️
 - Avoid repeating the same emoji on adjacent items when a different relevant emoji would work
 - Never include usernames, PR numbers, or issue IDs
+- Never include the @ character, URLs, links, or raw domain names
 - Deduplicate overlapping items
 - Keep wording useful for developers, not marketing fluff
 
@@ -136,6 +139,7 @@ Constraints:
     - Bug fixes: 🐛 🩹 ✅
     - Misc: 📖 🧰 🔒 🏗️
 - Avoid repeating the exact same emoji on adjacent items unless it is clearly the best fit
+- Do not include the @ character, URLs, links, or raw domain names anywhere in the response
 - Include as many distinct updates as possible while staying concise
 
 Respond with JSON only. Example:
@@ -161,6 +165,7 @@ Requirements:
 - Include UP TO {targetItems} of the most important/exciting features that fit within the character limit
 - Prioritize: Show as many HIGH-RELEVANCE items as possible while staying under {maxLength} characters
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
+- NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
 - Use emojis to make it visually appealing
 - Use varied, context-aware emojis; avoid repeating one emoji style for all lines
@@ -202,6 +207,7 @@ Requirements:
 - Deduplicate similar items across releases; focus on themes and top features
 - EXCLUDE any items that mention ""staff flag"" or internal labels
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
+- NEVER include the @ character, URLs, links, or raw domain names in the summary
 - DO NOT include version numbers or dates
 - Focus ONLY on what the features do, not who contributed them
 - Use emojis to make it visually appealing
@@ -242,6 +248,7 @@ Requirements:
 - Use varied, context-aware emojis (avoid repeating the same emoji more than twice)
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
 - NEVER include user names, contributor names, or issue/PR numbers
+- NEVER include the @ character, URLs, links, or raw domain names
 - Focus ONLY on what the features do, not who contributed them
 - DO NOT include the version number (it will be added separately)
 - DO NOT include markdown or headers
@@ -269,6 +276,7 @@ Requirements:
 - Include UP TO {targetItems} of the most important/exciting features that fit within the character limit
 - Prioritize: Show as many HIGH-RELEVANCE items as possible while staying under {maxLength} characters
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
+- NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
 - Use emojis to make it visually appealing
 - Use varied, context-aware emojis; avoid repeating one emoji style for all lines

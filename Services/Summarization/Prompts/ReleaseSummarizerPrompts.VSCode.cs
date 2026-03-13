@@ -22,6 +22,7 @@ Requirements:
 - Group features by category (e.g., Chat, Terminal, Editor, Extensions, etc.)
 - Include as many important features as possible, organized by their categories
 - NEVER include user names, contributor names, or issue/PR numbers
+- NEVER include the @ character, URLs, links, or raw domain names
 - Use emojis strategically to make it visually appealing and scannable
 - Use a wide emoji variety across categories (for example: ✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)
 - Avoid repeating the same emoji on adjacent lines unless it is clearly the best fit
@@ -38,7 +39,7 @@ VS Code Insiders delivers a major update with significant improvements across ch
 ✨ Improved inline chat discoverability with new UI
 ✨ Chat overlay hover interactions enhanced
 ⚡ Better performance for long chat sessions
-✨ New @workspace context improvements
+✨ New workspace context improvements
 
 ⌨️ Terminal:
 ✨ Sticky scroll setting for better navigation
@@ -74,6 +75,7 @@ Requirements:
 - Output ONLY a list of the most important features, one per line, each starting with an emoji
 - Do NOT include any introductory sentences, paragraph summary, or commentary
 - NEVER include user names, contributor names, or issue/PR numbers
+- NEVER include the @ character, URLs, links, or raw domain names
 - Focus ONLY on what the feature does, not who contributed it
 - Use varied emojis to make it visually appealing (✨ ⚡ 🔧 🎨 🐛 🔒 📖 etc.)
 - Prefer a broader emoji palette when relevant (for example: ✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)
@@ -124,6 +126,7 @@ Example output format (single feature from multiple related list items):
             $"- After the summary sentences, include UP TO {targetItems} of the most important features across the week",
             "- Deduplicate similar items across days; focus on themes and top features",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
+            "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Focus ONLY on what the features do, not who contributed them",
             "- Use emojis to make it visually appealing",
             "- Use varied, context-aware emojis from a broad set (✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)",
@@ -167,6 +170,7 @@ Example output format (single feature from multiple related list items):
             $"- After the summary sentences, include UP TO {targetItems} of the most important AI features",
             "- If there are no AI-related updates, respond with: No notable AI updates in this release.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
+            "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Use emojis to make it visually appealing",
             "- Use varied, context-aware emojis from a broad set (✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)",
             "- Avoid repeating the same emoji on adjacent lines unless necessary",
@@ -180,7 +184,7 @@ Example output format (single feature from multiple related list items):
             "VS Code Insiders expands AI workflows with stronger chat actions and richer inline suggestions.",
             string.Empty,
             "✨ New inline chat actions for refactors",
-            "✨ Smarter @workspace context retrieval",
+            "✨ Smarter workspace context retrieval",
             "⚡ Faster AI response streaming",
             "...and 2 more"
         };
@@ -207,6 +211,7 @@ Example output format (single feature from multiple related list items):
             $"- After the summary sentences, include UP TO {targetItems} of the most important AI features",
             "- If there are no AI-related updates, respond with: No notable AI updates this week.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
+            "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Use emojis to make it visually appealing",
             "- Use varied, context-aware emojis from a broad set (✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)",
             "- Avoid repeating the same emoji on adjacent lines unless necessary",

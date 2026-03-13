@@ -19,7 +19,7 @@ Rules:
 - Prefer concrete capability/outcome phrases over complete sentences
 - paragraphs must be concise plain-text paragraphs
 - For non-premium/threaded output, paragraphs should stay under 200 characters
-- Never include links, hashtags, usernames, issue numbers, or markdown headings
+- Never include links, URLs, raw domain names, the @ character, hashtags, usernames, issue numbers, or markdown headings
 - Focus on product impact, workflows, and why the update matters
 - Avoid hype and repetition";
 
@@ -52,13 +52,13 @@ Requirements:
 - Focus each bullet on a distinct capability, change, or outcome
 - Paragraphs should explain what changed and why it matters
 - {(premiumMode ? "Premium paragraphs can use richer detail, but still stay concise." : "Each paragraph must stay under 200 characters for thread follow-up posts.")}
-- Never include URLs, hashtags, usernames, issue numbers, or markdown headings
+- Never include URLs, links, raw domain names, the @ character, hashtags, usernames, issue numbers, or markdown headings
 - Keep wording concrete and helpful for developers
 - {(premiumMode ? "Use slightly richer detail because this can be a Premium X post." : "Keep paragraphs concise enough to fit a social thread follow-up post.")}
 - {(isWeekly ? "Synthesize themes across the week instead of repeating every title." : "Focus on the single changelog entry and its key takeaways.")}";
     }
 
-    public static string GetSinglePostSystemPrompt() => "You write concise GitHub changelog social posts. Return plain text only, with no markdown code fences.";
+    public static string GetSinglePostSystemPrompt() => "You write concise GitHub changelog social posts. Return plain text only, with no markdown code fences, no @ character, and no URLs, links, or raw domain names.";
 
     public static string BuildSinglePostUserPrompt(string releaseTitle, string cleanedContent, int maxLength) =>
         $@"Summarize the given GitHub changelog entry.
@@ -74,8 +74,9 @@ Requirements:
     - Keep wording concise, direct, and useful for devs.
     - NO emoji ever
     - NO hashtags ever
-    - NO @mentions ever
+    - NO @ character ever
     - Never include raw handles, commands with reviewer handles, or tagged account names
+    - Never include URLs, links, or raw domain names
     - NO filler words
     - Instead of using ""and"" use + or & when natural
     - Active voice only
@@ -86,7 +87,6 @@ Requirements:
     - Use Oxford commas
     - NO em dashes
     - Do NOT mention or tag any account
-    - Use whitespace Unicode character (U+200B or similar) to prevent unwanted URL unfurling when needed
     - ONLY summarize what is in the existing content - do NOT make anything up or use outside information
     - NEVER include any preface or preamble
     - Return plain text only
