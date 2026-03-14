@@ -17,13 +17,11 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 
 ## Features
 
-- Monitors GitHub Copilot CLI and Copilot SDK Atom feeds plus the GitHub Changelog RSS feed
+- Monitors GitHub Copilot CLI and Copilot SDK Atom feeds
 - Polls feeds every 15 minutes
 - Filters out pre-release versions and submodule releases
 - **AI-powered threaded posts**: Uses Microsoft.Extensions.AI with Azure OpenAI to generate concise, emoji-enhanced threads with top highlights in the first post, grouped follow-up posts, and the release link in the final post
 - **Optional Premium X mega-posts**: Per-account settings can switch X output from thread mode to a single post (up to 25,000 chars) organized into Top features, Enhancements, Bug fixes, and Misc
-- **GitHub Changelog automation**: Dedicated X account support for https://github.blog/changelog/feed/ with AI-generated "top things to know", richer summary paragraphs, media attachment detection, and per-area hashtag mapping
-- **Optional GitHub weekly recap**: Can publish an opt-in weekly GitHub Changelog recap thread or Premium post
 - **Deterministic fallback**: When AI is unavailable, threads are built from HTML-parsed release notes so posting always succeeds
 - Posts to Twitter/X using OAuth 1.0a authentication (with reply-chain thread support)
 - Cross-posts VS Code automation to Bluesky (with AT Protocol reply thread support)
@@ -111,11 +109,6 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     "TWITTER_VSCODE_ACCESS_TOKEN": "<your-vscode-access-token>",
     "TWITTER_VSCODE_ACCESS_TOKEN_SECRET": "<your-vscode-access-token-secret>",
 
-    "TWITTER_GITHUB_CHANGELOG_API_KEY": "<your-github-changelog-consumer-key>",
-    "TWITTER_GITHUB_CHANGELOG_API_SECRET": "<your-github-changelog-consumer-secret>",
-    "TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN": "<your-github-changelog-access-token>",
-    "TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN_SECRET": "<your-github-changelog-access-token-secret>",
-
    "BLUESKY_HANDLE": "<your-handle.bsky.social>",
    "BLUESKY_APP_PASSWORD": "<your-app-password>",
     
@@ -128,9 +121,7 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
     "AI_API_KEY": "<your-azure-openai-api-key>",
     "AI_MODEL": "gpt-4o-mini",
     "ENABLE_AI_SUMMARIES": "false",
-    "AI_THREAD_PLAN_TIMEOUT_SECONDS": "60",
-    "X_GITHUB_CHANGELOG_PREMIUM_MODE": "false",
-    "ENABLE_GITHUB_CHANGELOG_WEEKLY_RECAP": "false"
+      "AI_THREAD_PLAN_TIMEOUT_SECONDS": "60"
   }
 }
 ```
@@ -149,10 +140,6 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `TWITTER_VSCODE_API_SECRET` | Twitter OAuth 1.0a Consumer Secret for VS Code updates | Yes (for VS Code tweets) |
 | `TWITTER_VSCODE_ACCESS_TOKEN` | Twitter OAuth 1.0a Access Token for VS Code updates | Yes (for VS Code tweets) |
 | `TWITTER_VSCODE_ACCESS_TOKEN_SECRET` | Twitter OAuth 1.0a Access Token Secret for VS Code updates | Yes (for VS Code tweets) |
-| `TWITTER_GITHUB_CHANGELOG_API_KEY` | Twitter OAuth 1.0a Consumer Key for GitHub Changelog posts | Yes (for GitHub Changelog tweets) |
-| `TWITTER_GITHUB_CHANGELOG_API_SECRET` | Twitter OAuth 1.0a Consumer Secret for GitHub Changelog posts | Yes (for GitHub Changelog tweets) |
-| `TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN` | Twitter OAuth 1.0a Access Token for GitHub Changelog posts | Yes (for GitHub Changelog tweets) |
-| `TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN_SECRET` | Twitter OAuth 1.0a Access Token Secret for GitHub Changelog posts | Yes (for GitHub Changelog tweets) |
 | `BLUESKY_HANDLE` | Bluesky handle (e.g., `yourhandle.bsky.social`) | No (only required for VS Code cross-posting) |
 | `BLUESKY_APP_PASSWORD` | Bluesky App Password (Settings → App passwords) | No (only required for VS Code cross-posting) |
 | `AZURE_STORAGE_CONNECTION_STRING` | Connection string for state tracking blob storage | Yes |
@@ -165,8 +152,6 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AI_THREAD_PLAN_TIMEOUT_SECONDS` | Timeout (seconds) for AI thread-plan requests before fallback | No (default: `60`) |
 | `X_CLI_CHANGELOG_PREMIUM_MODE` | When `true`, posts CLI/SDK updates to X as one Premium mega-post instead of a thread | No (default: `false`) |
 | `X_VSCODE_PREMIUM_MODE` | When `true`, posts VS Code updates to X as one Premium mega-post instead of a thread | No (default: `false`) |
-| `X_GITHUB_CHANGELOG_PREMIUM_MODE` | When `true`, posts GitHub Changelog updates to X as one Premium post instead of a thread | No (default: `false`) |
-| `ENABLE_GITHUB_CHANGELOG_WEEKLY_RECAP` | When `true`, enables the Saturday GitHub Changelog weekly recap timer | No (default: `false`) |
 | `THREAD_MAX_POSTS` | Maximum number of posts per thread (including first and last) | No (default: `6`, minimum: `2`) |
 | `THREAD_TOP_HIGHLIGHTS` | Number of top highlights shown in the first post | No (default: `3`, minimum: `1`) |
 
@@ -253,17 +238,12 @@ To enable AI-powered summaries:
     # Test VS Code daily thread (today)
     curl http://localhost:7071/api/test-summary/vscode
 
-    # Test GitHub Changelog thread
-    curl http://localhost:7071/api/test-summary/github-changelog
-   
    # Test CLI weekly recap thread
    curl http://localhost:7071/api/test-weekly-recap
    
     # Test VS Code weekly recap thread
     curl http://localhost:7071/api/test-weekly-recap/vscode
 
-    # Test GitHub Changelog weekly recap thread
-    curl http://localhost:7071/api/test-weekly-recap/github-changelog
    ```
    
    Responses show numbered posts like `[Post 1/3]`, `[Post 2/3]`, `[Post 3/3]` for easy validation.
@@ -293,16 +273,15 @@ curl "http://localhost:7071/api/cli-summary?version=v1.7.0&maxLength=500&format=
 
 **TestSummary**
 
-Preview a formatted thread for the latest CLI, SDK, VS Code, or GitHub Changelog update (always uses AI when configured).
+Preview a formatted thread for the latest CLI, SDK, or VS Code update (always uses AI when configured).
 
-- Route: `GET /api/test-summary/{cli|sdk|vscode|github-changelog}`
+- Route: `GET /api/test-summary/{cli|sdk|vscode}`
 - For VS Code: optional `?date=yyyy-MM-dd` query parameter
 
 ```bash
 curl "http://localhost:7071/api/test-summary/cli"
 curl "http://localhost:7071/api/test-summary/sdk"
 curl "http://localhost:7071/api/test-summary/vscode?date=2026-02-01"
-curl "http://localhost:7071/api/test-summary/github-changelog?premium=true"
 ```
 
 Returns numbered thread preview (e.g., `[Post 1/3]`, `[Post 2/3]`, `[Post 3/3]`) without posting.
@@ -311,7 +290,7 @@ Returns numbered thread preview (e.g., `[Post 1/3]`, `[Post 2/3]`, `[Post 3/3]`)
 
 Preview the weekly thread for a given week window (PT).
 
-- Route: `GET /api/test-weekly-recap/{cli|vscode|github-changelog}`
+- Route: `GET /api/test-weekly-recap/{cli|vscode}`
 - Params:
    - `date` (optional, format `yyyy-MM-dd`, sets the week end date at 10:00 AM PT)
 
@@ -319,7 +298,6 @@ Preview the weekly thread for a given week window (PT).
 curl "http://localhost:7071/api/test-weekly-recap"
 curl "http://localhost:7071/api/test-weekly-recap?date=2026-02-01"
 curl "http://localhost:7071/api/test-weekly-recap/vscode?date=2026-02-01"
-curl "http://localhost:7071/api/test-weekly-recap/github-changelog?date=2026-02-01"
 ```
 
 Returns numbered thread preview for validation.
@@ -341,20 +319,6 @@ curl "http://localhost:7071/api/vscode-insiders?date=this-week&format=json"
 curl "http://localhost:7071/api/vscode-insiders?date=full&format=text"
 ```
 
-**GitHubChangelogCopilotLookup**
-
-Look up a GitHub Blog changelog entry by URL and return the description if it has a Copilot label.
-
-- Route: `POST /api/github-changelog/copilot`
-- Body:
-   - `url` (required, absolute URL)
-
-```bash
-curl -X POST "http://localhost:7071/api/github-changelog/copilot" \
-   -H "Content-Type: application/json" \
-   -d "{\"url\":\"https://github.blog/changelog/2025-01-01-example/\"}"
-```
-
 ### Timer Functions
 
 **ReleaseNotifier**
@@ -371,18 +335,6 @@ curl -X POST "http://localhost:7071/api/github-changelog/copilot" \
 
 - Schedule: `0 0 17,18 * * 6` (runs Saturday; posts at 10 AM PT)
 - Feed: fixed `https://github.com/github/copilot-cli/releases.atom`
-
-**GitHubChangelogNotifier**
-
-- Schedule: `0 */15 * * * *` (every 15 minutes)
-- Feed: fixed `https://github.blog/changelog/feed/`
-- Posts: dedicated GitHub Changelog X account (`TWITTER_GITHUB_CHANGELOG_*`)
-
-**GitHubChangelogWeeklyRecap**
-
-- Schedule: `0 0 17,18 * * 6` (Saturday; posts at 10 AM PT when enabled)
-- Feed: fixed `https://github.blog/changelog/feed/`
-- Gate: `ENABLE_GITHUB_CHANGELOG_WEEKLY_RECAP=true`
 
 **VSCodeInsidersChangelogTweet**
 
@@ -413,11 +365,9 @@ auto-tweet-rss/
 └── Services/
    ├── Feeds/
    │   ├── RssFeedService.cs                  # Fetches and filters RSS feeds
-   │   ├── GitHubChangelogFeedService.cs      # Fetches/parses GitHub Changelog RSS
    │   └── VSCodeReleaseNotesService.cs       # Fetches/parses VS Code release notes
    ├── Formatting/
    │   ├── TweetFormatterService.cs           # Formats thread and post content
-   │   ├── TweetFormatterService.GitHubChangelog.cs # GitHub changelog formatter partial
    │   └── XPostLengthHelper.cs               # Weighted length/truncation utilities
    ├── Social/
    │   ├── Auth/
@@ -425,7 +375,6 @@ auto-tweet-rss/
    │   ├── Twitter/
    │   │   ├── TwitterApiClient.cs            # Direct HTTP calls to X/Twitter API v2
    │   │   ├── VSCodeTwitterApiClient.cs      # X client for VS Code account
-   │   │   └── GitHubChangelogTwitterApiClient.cs # X client for GitHub changelog account
    │   ├── BlueskyApiClient.cs                # Bluesky (AT Protocol) client
    │   ├── ISocialMediaClient.cs              # Abstraction for social clients
    │   ├── SocialMediaPost.cs                 # Post payload model
@@ -436,7 +385,6 @@ auto-tweet-rss/
       ├── ReleaseSummarizerService.cs        # AI-powered summarization orchestrator
       ├── ReleaseSummarizerPrompts.cs        # Prompt templates/builders
       ├── ReleaseSummaryPlans.cs             # Plan/result models for AI output
-      ├── GitHubChangelogSinglePostSummaryNormalizer.cs # GitHub single-post cleanup helper
       └── VSCodeSummaryCacheService.cs       # Caches VS Code summaries
 
 > Note: Namespaces remain `AutoTweetRss.Services` after this folder regrouping.
@@ -476,18 +424,6 @@ Each stream now generates and posts a **thread** (reply chain):
 6. **Format**: Builds a thread: first post with top highlights, follow-up posts with grouped features, last post with URL + `#GitHubCopilotCLI`
 7. **Post**: Posts each tweet in sequence as a reply chain via Twitter API v2
 8. **Update State**: Saves the processed entry ID to prevent duplicates
-
-### GitHub Changelog automation
-
-The GitHub Changelog flow uses the GitHub Blog RSS feed and a separate X account. For each new entry it:
-
-1. Fetches the latest changelog item and extracts labels, canonical link, and media (preferring one video or up to two images)
-2. Generates AI-assisted "top things to know" bullets plus one or two summary paragraphs, with deterministic fallback
-3. Maps product areas to hashtags (for example Copilot, VS Code, Actions, Codespaces, Enterprise, Projects, and Security)
-4. Posts either:
-   - a thread with bullet highlights in the first post, summary follow-up posts, and the canonical source link at the end, or
-   - a Premium single post with bullets, richer paragraphs, the source link, and hashtags
-5. Optionally publishes a weekly recap on Saturday when `ENABLE_GITHUB_CHANGELOG_WEEKLY_RECAP=true`
 
 ### SdkReleaseNotifier Function (Copilot SDK)
 

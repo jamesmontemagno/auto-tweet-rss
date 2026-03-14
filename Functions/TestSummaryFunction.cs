@@ -11,20 +11,17 @@ public class TestSummaryFunction
 {
     private readonly ILogger<TestSummaryFunction> _logger;
     private readonly RssFeedService _rssFeedService;
-    private readonly GitHubChangelogFeedService _gitHubChangelogFeedService;
     private readonly TweetFormatterService _tweetFormatterService;
     private readonly VSCodeReleaseNotesService _vsCodeReleaseNotesService;
 
     public TestSummaryFunction(
         ILogger<TestSummaryFunction> logger,
         RssFeedService rssFeedService,
-        GitHubChangelogFeedService gitHubChangelogFeedService,
         TweetFormatterService tweetFormatterService,
         VSCodeReleaseNotesService vsCodeReleaseNotesService)
     {
         _logger = logger;
         _rssFeedService = rssFeedService;
-        _gitHubChangelogFeedService = gitHubChangelogFeedService;
         _tweetFormatterService = tweetFormatterService;
         _vsCodeReleaseNotesService = vsCodeReleaseNotesService;
     }
@@ -42,13 +39,12 @@ public class TestSummaryFunction
         {
             var typeLower = type.ToLowerInvariant();
             var premiumMode = IsEnabledQuery(req, "premium");
-            var singleMode = IsEnabledQuery(req, "single");
 
             // Validate type parameter
-            if (typeLower != "cli" && typeLower != "sdk" && typeLower != "vscode" && typeLower != "github-changelog")
+            if (typeLower != "cli" && typeLower != "sdk" && typeLower != "vscode")
             {
                 response.StatusCode = HttpStatusCode.BadRequest;
-                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli', 'sdk', 'vscode', or 'github-changelog'.");
+                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli', 'sdk', or 'vscode'.");
                 return response;
             }
 
@@ -56,11 +52,6 @@ public class TestSummaryFunction
             if (typeLower == "vscode")
             {
                 return await HandleVSCodeTestSummaryAsync(req, response, premiumMode);
-            }
-
-            if (typeLower == "github-changelog")
-            {
-                return await HandleGitHubChangelogTestSummaryAsync(response, premiumMode, singleMode);
             }
 
             // Determine feed URL based on type
@@ -207,61 +198,6 @@ public class TestSummaryFunction
             output += $"[Post {i + 1}/{thread.Count}] ({thread[i].Length} chars):\n";
             output += thread[i];
             if (i < thread.Count - 1)
-            {
-                output += "\n───────────────────────────────────────\n";
-            }
-        }
-
-        await response.WriteStringAsync(output);
-        return response;
-    }
-
-    private async Task<HttpResponseData> HandleGitHubChangelogTestSummaryAsync(HttpResponseData response, bool premiumMode, bool singleMode)
-    {
-        var entries = await _gitHubChangelogFeedService.GetEntriesAsync();
-        if (entries.Count == 0)
-        {
-            response.StatusCode = HttpStatusCode.NotFound;
-            await response.WriteStringAsync("No GitHub changelog entries found.");
-            return response;
-        }
-
-        var latestEntry = entries.OrderByDescending(entry => entry.Updated).First();
-        IReadOnlyList<SocialMediaPost> posts = premiumMode
-            ? [await _tweetFormatterService.FormatGitHubChangelogPremiumPostForXAsync(latestEntry, useAi: true)]
-            : singleMode
-                ? [await _tweetFormatterService.FormatGitHubChangelogSinglePostForXAsync(latestEntry, useAi: true)]
-                : await _tweetFormatterService.FormatGitHubChangelogThreadForXAsync(latestEntry, useAi: true);
-
-        response.StatusCode = HttpStatusCode.OK;
-        response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-
-        var output = $"GitHub Changelog: {latestEntry.Title}\n";
-        output += $"Updated: {latestEntry.Updated:yyyy-MM-dd HH:mm:ss}\n";
-        output += $"Link: {latestEntry.Link}\n";
-        output += $"Labels: {string.Join(", ", latestEntry.Labels)}\n";
-        output += $"Media: {string.Join(", ", latestEntry.Media.Select(item => item.Url))}\n\n";
-        output += $"Mode: {(premiumMode ? "premium" : singleMode ? "single" : "thread")}\n";
-        output += $"Thread Preview ({posts.Count} posts):\n";
-        output += "═══════════════════════════════════════\n";
-
-        for (var i = 0; i < posts.Count; i++)
-        {
-            var weightedLength = XPostLengthHelper.GetWeightedLength(posts[i].Text);
-            output += $"[Post {i + 1}/{posts.Count}] (raw={posts[i].Text.Length}, weighted={weightedLength}";
-            if (posts[i].MediaUrlsOrEmpty.Count > 0)
-            {
-                output += $", media={posts[i].MediaUrlsOrEmpty.Count}";
-            }
-
-            output += "):\n";
-            output += posts[i].Text;
-            if (posts[i].MediaUrlsOrEmpty.Count > 0)
-            {
-                output += $"\nMedia: {string.Join(", ", posts[i].MediaUrlsOrEmpty)}";
-            }
-
-            if (i < posts.Count - 1)
             {
                 output += "\n───────────────────────────────────────\n";
             }

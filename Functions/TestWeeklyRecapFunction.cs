@@ -12,7 +12,6 @@ public class TestWeeklyRecapFunction
 {
     private readonly ILogger<TestWeeklyRecapFunction> _logger;
     private readonly RssFeedService _rssFeedService;
-    private readonly GitHubChangelogFeedService _gitHubChangelogFeedService;
     private readonly TweetFormatterService _tweetFormatterService;
     private readonly VSCodeReleaseNotesService _vsCodeReleaseNotesService;
 
@@ -25,13 +24,11 @@ public class TestWeeklyRecapFunction
     public TestWeeklyRecapFunction(
         ILogger<TestWeeklyRecapFunction> logger,
         RssFeedService rssFeedService,
-        GitHubChangelogFeedService gitHubChangelogFeedService,
         TweetFormatterService tweetFormatterService,
         VSCodeReleaseNotesService vsCodeReleaseNotesService)
     {
         _logger = logger;
         _rssFeedService = rssFeedService;
-        _gitHubChangelogFeedService = gitHubChangelogFeedService;
         _tweetFormatterService = tweetFormatterService;
         _vsCodeReleaseNotesService = vsCodeReleaseNotesService;
     }
@@ -49,21 +46,16 @@ public class TestWeeklyRecapFunction
         {
             var typeLower = (type ?? "cli").ToLowerInvariant();
 
-            if (typeLower != "cli" && typeLower != "vscode" && typeLower != "github-changelog")
+            if (typeLower != "cli" && typeLower != "vscode")
             {
                 response.StatusCode = HttpStatusCode.BadRequest;
-                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli', 'vscode', or 'github-changelog'.");
+                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli' or 'vscode'.");
                 return response;
             }
 
             if (typeLower == "vscode")
             {
                 return await HandleVSCodeWeeklyRecapAsync(req, response);
-            }
-
-            if (typeLower == "github-changelog")
-            {
-                return await HandleGitHubChangelogWeeklyRecapAsync(req, response);
             }
 
             var pacificTimeZone = GetPacificTimeZone();
@@ -269,64 +261,6 @@ public class TestWeeklyRecapFunction
                 {
                     output += "\n───────────────────────────────────────\n";
                 }
-            }
-        }
-
-        await response.WriteStringAsync(output);
-        return response;
-    }
-
-    private async Task<HttpResponseData> HandleGitHubChangelogWeeklyRecapAsync(HttpRequestData req, HttpResponseData response)
-    {
-        var pacificTimeZone = GetPacificTimeZone();
-        var weekEndPacific = GetWeekEndPacific(req, pacificTimeZone);
-        var weekStartPacific = weekEndPacific.AddDays(-7);
-        var weekStartUtc = weekStartPacific.ToUniversalTime();
-        var weekEndUtc = weekEndPacific.ToUniversalTime();
-
-        var entries = await _gitHubChangelogFeedService.GetEntriesAsync();
-        var weeklyEntries = entries
-            .Where(entry => entry.Updated >= weekStartUtc && entry.Updated <= weekEndUtc)
-            .OrderBy(entry => entry.Updated)
-            .ToList();
-
-        if (weeklyEntries.Count == 0)
-        {
-            response.StatusCode = HttpStatusCode.NotFound;
-            await response.WriteStringAsync("No GitHub changelog entries found for the weekly window.");
-            return response;
-        }
-
-        var premiumMode = IsEnabled("X_GITHUB_CHANGELOG_PREMIUM_MODE");
-        IReadOnlyList<SocialMediaPost> posts = premiumMode
-            ? [await _tweetFormatterService.FormatGitHubChangelogWeeklyRecapPremiumPostForXAsync(
-                weeklyEntries,
-                weekStartPacific,
-                weekEndPacific,
-                useAi: true)]
-            : await _tweetFormatterService.FormatGitHubChangelogWeeklyRecapThreadForXAsync(
-                weeklyEntries,
-                weekStartPacific,
-                weekEndPacific,
-                useAi: true);
-
-        response.StatusCode = HttpStatusCode.OK;
-        response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-
-        var output = $"Weekly window (PT): {weekStartPacific:yyyy-MM-dd} to {weekEndPacific:yyyy-MM-dd}\n";
-        output += $"Entries: {weeklyEntries.Count}\n";
-        output += $"Labels: {string.Join(", ", weeklyEntries.SelectMany(entry => entry.Labels).Distinct(StringComparer.OrdinalIgnoreCase))}\n";
-        output += $"Mode: {(premiumMode ? "premium" : "thread")}\n\n";
-        output += $"Thread Preview ({posts.Count} posts):\n";
-        output += "═══════════════════════════════════════\n";
-
-        for (var i = 0; i < posts.Count; i++)
-        {
-            output += $"[Post {i + 1}/{posts.Count}] ({posts[i].Text.Length} chars):\n";
-            output += posts[i].Text;
-            if (i < posts.Count - 1)
-            {
-                output += "\n───────────────────────────────────────\n";
             }
         }
 

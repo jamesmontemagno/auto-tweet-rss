@@ -20,9 +20,3 @@ public class PremiumPostPlan
     public List<string> BugFixes { get; set; } = [];
     public List<string> Misc { get; set; } = [];
 }
-
-public class ChangelogSummaryPlan
-{
-    public List<string> TopThingsToKnow { get; set; } = [];
-    public List<string> Paragraphs { get; set; } = [];
-}
