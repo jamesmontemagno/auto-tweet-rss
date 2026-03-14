@@ -23,9 +23,9 @@ Requirements:
 - Include as many important features as possible, organized by their categories
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
-- Use emojis strategically to make it visually appealing and scannable
-- Use a wide emoji variety across categories (for example: ✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)
-- Avoid repeating the same emoji on adjacent lines unless it is clearly the best fit
+- Prefer plain text with little to no emoji
+- If emoji is used, keep it limited to at most one per category header
+- Avoid emoji on feature lines whenever possible
 - Use clear category headers to organize the features
 - Keep individual feature descriptions informative but concise (50-80 chars each)
 - If there are more items than you can include, add ""...and X more"" at the end
@@ -35,27 +35,27 @@ Requirements:
 Example output format:
 VS Code Insiders delivers a major update with significant improvements across chat, terminal, and editor experiences. This release focuses on performance, discoverability, and enhanced workflows. New AI-powered features and refined UI elements make development more efficient.
 
-🤖 Chat & AI:
-✨ Improved inline chat discoverability with new UI
-✨ Chat overlay hover interactions enhanced
-⚡ Better performance for long chat sessions
-✨ New workspace context improvements
+Chat & AI:
+Improved inline chat discoverability with new UI
+Chat overlay hover interactions enhanced
+Better performance for long chat sessions
+New workspace context improvements
 
-⌨️ Terminal:
-✨ Sticky scroll setting for better navigation
-⚡ Faster rendering for large outputs
-🐛 Fixed Unicode character display issues
+Terminal:
+Sticky scroll setting for better navigation
+Faster rendering for large outputs
+Fixed Unicode character display issues
 
-✏️ Editor:
-✨ New IntelliSense improvements for TypeScript
-✨ Multi-cursor enhancements
-🎨 Refined syntax highlighting for JSX
-⚡ Improved file watcher performance
+Editor:
+New IntelliSense improvements for TypeScript
+Multi-cursor enhancements
+Refined syntax highlighting for JSX
+Improved file watcher performance
 
-🔧 Extensions & Settings:
-✨ New extension marketplace filters
-🔒 Enhanced security for extension installations
-📖 Better extension documentation display
+Extensions & Settings:
+New extension marketplace filters
+Enhanced security for extension installations
+Better extension documentation display
 
 ...and 15 more updates across debugging, source control, and themes.";
         }
@@ -72,14 +72,13 @@ Requirements:
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
 - CRITICAL: Your PRIMARY GOAL is to show AS MANY distinct features as possible within the character limit
 - Consolidate related list items into single feature descriptions rather than listing each separately
-- Output ONLY a list of the most important features, one per line, each starting with an emoji
+- Output ONLY a list of the most important features, one per line
 - Do NOT include any introductory sentences, paragraph summary, or commentary
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
 - Focus ONLY on what the feature does, not who contributed it
-- Use varied emojis to make it visually appealing (✨ ⚡ 🔧 🎨 🐛 🔒 📖 etc.)
-- Prefer a broader emoji palette when relevant (for example: ✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)
-- Avoid repeating the same emoji on consecutive lines unless necessary
+- Prefer plain text with little to no emoji
+- If emoji is used, keep it sparse (at most 1 in every 3 lines)
 - Keep descriptions VERY concise (25-40 characters per line) to maximize the number of features shown
 - Prioritize brevity over detail - shorter descriptions allow more features to be listed
 - CRITICAL: ONLY add ""...and X more"" if you had to OMIT genuinely distinct features due to space constraints
@@ -91,21 +90,21 @@ Requirements:
 - REMEMBER: More features shown explicitly is ALWAYS better than longer descriptions!
 
 Example output format (showing 4 features from 6 total, with 2 omitted):
-✨ Faster bracket colorization
-⚡ Improved terminal rendering
-🔧 New sticky scroll setting
-🎨 Enhanced chat overlay UI
+Faster bracket colorization
+Improved terminal rendering
+New sticky scroll setting
+Enhanced chat overlay UI
 ...and 2 more
 
 Example output format (showing 5 consolidated features from 8 list items, all features shown):
-✨ Faster bracket colorization
-⚡ Improved terminal rendering
-🔧 New sticky scroll setting
-🎨 Enhanced chat overlay UI
-🐛 Fixed file watcher issue
+Faster bracket colorization
+Improved terminal rendering
+New sticky scroll setting
+Enhanced chat overlay UI
+Fixed file watcher issue
 
 Example output format (single feature from multiple related list items):
-✨ Major terminal performance improvements";
+Major terminal performance improvements";
     }
 
     public static string BuildVSCodeWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
@@ -128,9 +127,8 @@ Example output format (single feature from multiple related list items):
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Focus ONLY on what the features do, not who contributed them",
-            "- Use emojis to make it visually appealing",
-            "- Use varied, context-aware emojis from a broad set (✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)",
-            "- Avoid repeating the same emoji on adjacent lines unless necessary",
+            "- Prefer plain text with minimal emoji usage",
+            "- If emoji is used, keep it sparse (at most 1 in every 3 lines)",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",
             "- If you show fewer items than the total, add ...and X more as the FINAL line",
@@ -141,10 +139,10 @@ Example output format (single feature from multiple related list items):
             "Example output format:",
             "This week VS Code Insiders brings chat refinements, faster terminal rendering, and new editor conveniences.",
             string.Empty,
-            "✨ Improved inline chat discoverability",
-            "⚡ Faster terminal rendering for large output",
-            "🔧 New sticky scroll setting in terminal",
-            "🎨 Chat overlay hover UI enhanced",
+            "Improved inline chat discoverability",
+            "Faster terminal rendering for large output",
+            "New sticky scroll setting in terminal",
+            "Chat overlay hover UI enhanced",
             "...and 5 more"
         };
 
@@ -171,9 +169,8 @@ Example output format (single feature from multiple related list items):
             "- If there are no AI-related updates, respond with: No notable AI updates in this release.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
-            "- Use emojis to make it visually appealing",
-            "- Use varied, context-aware emojis from a broad set (✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)",
-            "- Avoid repeating the same emoji on adjacent lines unless necessary",
+            "- Prefer plain text with minimal emoji usage",
+            "- If emoji is used, keep it sparse (at most 1 in every 3 lines)",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 40-50 characters per line)",
             "- If you show fewer items than the total AI items, add ...and X more as the FINAL line",
@@ -183,9 +180,9 @@ Example output format (single feature from multiple related list items):
             "Example output format:",
             "VS Code Insiders expands AI workflows with stronger chat actions and richer inline suggestions.",
             string.Empty,
-            "✨ New inline chat actions for refactors",
-            "✨ Smarter workspace context retrieval",
-            "⚡ Faster AI response streaming",
+            "New inline chat actions for refactors",
+            "Smarter workspace context retrieval",
+            "Faster AI response streaming",
             "...and 2 more"
         };
 
@@ -212,9 +209,8 @@ Example output format (single feature from multiple related list items):
             "- If there are no AI-related updates, respond with: No notable AI updates this week.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
-            "- Use emojis to make it visually appealing",
-            "- Use varied, context-aware emojis from a broad set (✨ ⚡ 🔧 🎨 🐛 🔒 📖 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)",
-            "- Avoid repeating the same emoji on adjacent lines unless necessary",
+            "- Prefer plain text with minimal emoji usage",
+            "- If emoji is used, keep it sparse (at most 1 in every 3 lines)",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",
             "- If you show fewer items than the total AI items, add ...and X more as the FINAL line",
@@ -224,9 +220,9 @@ Example output format (single feature from multiple related list items):
             "Example output format:",
             "This week brings stronger AI chat workflows and better inline suggestion control.",
             string.Empty,
-            "✨ New chat actions for docs edits",
-            "✨ Smarter prompt variables in chat",
-            "⚡ Faster AI responses in large repos",
+            "New chat actions for docs edits",
+            "Smarter prompt variables in chat",
+            "Faster AI responses in large repos",
             "...and 3 more"
         };
 

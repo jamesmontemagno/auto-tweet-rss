@@ -6,17 +6,17 @@ internal static class ReleaseSummarizerCliSdkPrompts
 
 Your task is to:
 1. Identify the most exciting and impactful features or changes from release notes
-2. Format them in a concise way with appropriate emojis
+2. Format them in a concise, readable way
 3. Ensure the summary fits within the specified character limit
-4. Use emojis strategically to enhance readability and appeal
+4. Prefer plain text over emoji decoration
 5. NEVER include user names, contributor names, or issue numbers
 6. Focus ONLY on features, fixes, and improvements - not who contributed them
 7. NEVER include the @ character, URLs, links, or raw domain names in any returned text
 
 Emoji guidelines:
-- Prefer a broad, context-aware emoji mix across a post: ✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭
-- Avoid repeating the same emoji on adjacent lines unless it is clearly the best fit
-- Choose emojis that match the specific feature type, not just generic hype
+- Keep emoji usage minimal: prefer zero emoji; if needed, use at most 1 emoji per 3 items
+- Never add emoji to every line
+- Never stack multiple emojis on a single line
 
 Keep the tone exciting and developer-friendly. Focus on what matters most to users.";
 
@@ -61,9 +61,8 @@ The JSON must have exactly these fields:
 - ""items"": array of strings, ALL features ranked by importance/excitement (most exciting first)
 
 Rules:
-- Each item must start with an appropriate emoji
-- Use a wide emoji variety across items (for example: ✨ ⚡ 🐛 🔒 📖 🎉 🔧 🎨 🚀 ✅ 🧪 🧰 🛠️ 📦 🧭)
-- Avoid repeating the same emoji on consecutive items unless necessary
+- Keep items plain text first; emoji is optional and should be rare
+- If emoji is used, keep it sparse (at most 1 in every 3 items)
 - Each item should be 40-70 characters - descriptive but concise
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
@@ -81,7 +80,7 @@ Total items detected: {totalItemCount}
 Return ALL items ranked by importance. Respond with JSON only. Example:
 {{
   ""totalCount"": 8,
-  ""items"": [""✨ New interactive setup flow for easier onboarding"", ""⚡ 3x faster workspace indexing"", ""🐛 Fixed auth token refresh edge case"", ""🔒 Hardened credential storage"", ""📖 Updated getting started docs""]
+    ""items"": [""New interactive setup flow for easier onboarding"", ""3x faster workspace indexing"", ""Fixed auth token refresh edge case"", ""Hardened credential storage"", ""Updated getting started docs""]
 }}";
 
     public static string GetPremiumPostSystemPrompt() => @"You are an expert social media release editor.
@@ -99,14 +98,9 @@ Rules:
 - Place performance, UX polish, and iterative upgrades under enhancements
 - Place defects/regressions under bugFixes
 - Place docs/tooling/other updates under misc
-- Every item must start with a single relevant emoji and be concise
-- Use varied emojis that fit the content; avoid using the same emoji for every item
-- Prefer emoji palettes by section:
-    - topFeatures: ✨ 🎉 🚀 🔥
-    - enhancements: ⚡ 🔧 🎨 🛠️
-    - bugFixes: 🐛 🩹 ✅
-    - misc: 📖 🧰 🔒 🏗️
-- Avoid repeating the same emoji on adjacent items when a different relevant emoji would work
+- Keep items concise and plain text by default
+- Avoid emoji unless it adds real clarity; never use emoji on every item
+- If used, keep emoji sparse (at most 1 in every 3 items)
 - Never include usernames, PR numbers, or issue IDs
 - Never include the @ character, URLs, links, or raw domain names
 - Deduplicate overlapping items
@@ -130,25 +124,19 @@ Release Content:
 Constraints:
 - Premium X maximum post length: {maxLength} characters
 - Organize content into these exact sections: Top features, Enhancements, Bug fixes, Misc
-- Return concise, emoji-prefixed items
-- Emojify EVERY item with a relevant emoji
-- Use varied, context-aware emojis across items; do NOT use the same emoji for every line
-- Match emoji style to the section when possible:
-    - Top features: ✨ 🎉 🚀 🔥
-    - Enhancements: ⚡ 🔧 🎨 🛠️
-    - Bug fixes: 🐛 🩹 ✅
-    - Misc: 📖 🧰 🔒 🏗️
-- Avoid repeating the exact same emoji on adjacent items unless it is clearly the best fit
+- Return concise items in plain text
+- Avoid emoji unless it materially improves clarity
+- If used, keep emoji sparse (at most 1 in every 3 items)
 - Do not include the @ character, URLs, links, or raw domain names anywhere in the response
 - Include as many distinct updates as possible while staying concise
 
 Respond with JSON only. Example:
 {{
   ""totalCount"": 24,
-    ""topFeatures"": [""✨ Smarter workspace context selection for prompts"", ""🚀 New remote agent setup flow""],
-    ""enhancements"": [""⚡ Faster indexing for large repositories"", ""🎨 Cleaner inline progress states""],
-    ""bugFixes"": [""🐛 Fixed auth refresh edge cases"", ""🩹 Resolved terminal paste regression""],
-    ""misc"": [""📖 Updated setup and troubleshooting docs"", ""🔒 Hardened token handling defaults""]
+        ""topFeatures"": [""Smarter workspace context selection for prompts"", ""New remote agent setup flow""],
+        ""enhancements"": [""Faster indexing for large repositories"", ""Cleaner inline progress states""],
+        ""bugFixes"": [""Fixed auth refresh edge cases"", ""Resolved terminal paste regression""],
+        ""misc"": [""Updated setup and troubleshooting docs"", ""Hardened token handling defaults""]
 }}";
 
     private static string BuildCliUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
@@ -167,8 +155,8 @@ Requirements:
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
-- Use emojis to make it visually appealing
-- Use varied, context-aware emojis; avoid repeating one emoji style for all lines
+- Prefer plain text with minimal emoji usage
+- If emoji is used, keep it sparse (at most 1 in every 3 lines)
 - Each feature should be on its own line
 - IMPORTANT: CLI feature descriptions are often long - you MUST shorten/summarize them to fit more items
 - Keep each feature line concise (aim for 40-50 characters) to maximize count
@@ -180,17 +168,17 @@ Requirements:
 - MAXIMIZE the number of items shown - more items is better than longer descriptions!
 
 Example output format (when total items = 8, showing 5):
-✨ Show compaction status in timeline
-✨ Add Esc-Esc to undo file changes
-✨ Support for GHE Cloud remote agents
-⚡ Improved workspace indexing speed
-🐛 Fixed file watcher memory leak
+Show compaction status in timeline
+Add Esc-Esc to undo file changes
+Support for GHE Cloud remote agents
+Improved workspace indexing speed
+Fixed file watcher memory leak
 ...and 3 more
 
 Example output format (when total items = 3, showing 3):
-✨ Show compaction status in timeline
-✨ Add Esc-Esc to undo file changes
-✨ Support for GHE Cloud remote agents";
+Show compaction status in timeline
+Add Esc-Esc to undo file changes
+Support for GHE Cloud remote agents";
 
     private static string BuildCliWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Create a weekly recap summary of the following Copilot CLI release notes for {releaseTitle}.
@@ -210,8 +198,8 @@ Requirements:
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - DO NOT include version numbers or dates
 - Focus ONLY on what the features do, not who contributed them
-- Use emojis to make it visually appealing
-- Use varied, context-aware emojis; avoid repeating one emoji style for all lines
+- Prefer plain text with minimal emoji usage
+- If emoji is used, keep it sparse (at most 1 in every 3 lines)
 - Each highlight should be on its own line
 - Keep each highlight line ultra concise (aim for 20-35 characters) to maximize count
 - Prefer short noun-phrase highlights over sentences
@@ -220,17 +208,17 @@ Requirements:
 - Output ONLY the formatted highlight list, nothing else
 
 Example output format (when total items = 9, showing 5):
-✨ Smarter repo context for agents
-✨ New interactive setup flow
-⚡ Faster indexing for large workspaces
-🐛 Fixed auth refresh edge cases
-🔒 Hardened token storage behavior
+Smarter repo context for agents
+New interactive setup flow
+Faster indexing for large workspaces
+Fixed auth refresh edge cases
+Hardened token storage behavior
 ...and 4 more
 
 Example output format (when total items = 3, showing 3):
-✨ Smarter repo context for agents
-⚡ Faster indexing for large workspaces
-🐛 Fixed auth refresh edge cases";
+Smarter repo context for agents
+Faster indexing for large workspaces
+Fixed auth refresh edge cases";
 
     private static string BuildCliParagraphUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Write a single-paragraph summary of the following Copilot CLI release notes for {releaseTitle}.
@@ -244,8 +232,8 @@ Target features to mention: {targetItems}
 Requirements:
 - Output MUST be a single paragraph with no line breaks or bullet lists
 - Use 2-4 sentences that highlight the most important features
-- Include 2-4 emojis in the paragraph to emphasize major areas
-- Use varied, context-aware emojis (avoid repeating the same emoji more than twice)
+- Prefer no emoji in the paragraph
+- If used, include at most 1 emoji total
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
@@ -255,7 +243,7 @@ Requirements:
 - Output ONLY the paragraph, nothing else
 
 Example output:
-✨ Copilot CLI now ships faster completions and smarter context selection, making large repos feel more responsive. 🧭 New navigation and help improvements streamline common workflows, while ⚡ performance and 🐛 fix updates reduce friction across everyday commands.";
+Copilot CLI now ships faster completions and smarter context selection, making large repos feel more responsive. New navigation and help improvements streamline common workflows, while performance and reliability updates reduce friction across everyday commands.";
 
     private static string BuildSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Summarize the following release notes for {releaseTitle}.
@@ -278,8 +266,8 @@ Requirements:
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
-- Use emojis to make it visually appealing
-- Use varied, context-aware emojis; avoid repeating one emoji style for all lines
+- Prefer plain text with minimal emoji usage
+- If emoji is used, keep it sparse (at most 1 in every 3 lines)
 - Each feature should be on its own line
 - Keep descriptions concise (aim for 35-40 characters per line) to fit more items
 - CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
@@ -289,17 +277,17 @@ Requirements:
 - MAXIMIZE the number of items shown - more items is better than longer descriptions!
 
 Example output format (when total items = 8, showing 6):
-✨ New AI code completion engine
-⚡ 40% faster suggestion generation
-🐛 Fixed context window overflow
-✨ Support for Rust language
-🔒 Updated security dependencies
-📖 Added API migration guide
+New AI code completion engine
+40% faster suggestion generation
+Fixed context window overflow
+Support for Rust language
+Updated security dependencies
+Added API migration guide
 ...and 2 more
 
 Example output format (when total items = 4, showing 4):
-✨ New AI code completion engine
-⚡ 40% faster suggestion generation
-🐛 Fixed context window overflow
-✨ Support for Rust language";
+New AI code completion engine
+40% faster suggestion generation
+Fixed context window overflow
+Support for Rust language";
 }
