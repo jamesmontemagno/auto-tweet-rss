@@ -23,9 +23,9 @@ Requirements:
 - Include as many important features as possible, organized by their categories
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
-- Prefer plain text with little to no emoji
-- If emoji is used, keep it limited to at most one per category header
-- Avoid emoji on feature lines whenever possible
+- Prefer plain text, but sprinkle in some emoji for the most impactful items
+- Keep emoji selective and sparse: use them on roughly 10% of category headers or feature lines
+- Only use emoji where it adds emphasis or clarity; never decorate every item
 - Use clear category headers to organize the features
 - Keep individual feature descriptions informative but concise (50-80 chars each)
 - If there are more items than you can include, add ""...and X more"" at the end
@@ -77,8 +77,9 @@ Requirements:
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
 - Focus ONLY on what the feature does, not who contributed it
-- Prefer plain text with little to no emoji
-- If emoji is used, keep it sparse (at most 1 in every 3 lines)
+- Prefer plain text, but sprinkle in some emoji for the most impactful items
+- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Only use emoji where it adds emphasis or clarity; never decorate every line
 - Keep descriptions VERY concise (25-40 characters per line) to maximize the number of features shown
 - Prioritize brevity over detail - shorter descriptions allow more features to be listed
 - CRITICAL: ONLY add ""...and X more"" if you had to OMIT genuinely distinct features due to space constraints
@@ -127,8 +128,9 @@ Major terminal performance improvements";
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Focus ONLY on what the features do, not who contributed them",
-            "- Prefer plain text with minimal emoji usage",
-            "- If emoji is used, keep it sparse (at most 1 in every 3 lines)",
+            "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
+            "- Keep emoji selective and sparse: use them on roughly 10% of feature lines",
+            "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",
             "- If you show fewer items than the total, add ...and X more as the FINAL line",
@@ -169,8 +171,9 @@ Major terminal performance improvements";
             "- If there are no AI-related updates, respond with: No notable AI updates in this release.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
-            "- Prefer plain text with minimal emoji usage",
-            "- If emoji is used, keep it sparse (at most 1 in every 3 lines)",
+            "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
+            "- Keep emoji selective and sparse: use them on roughly 10% of feature lines",
+            "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 40-50 characters per line)",
             "- If you show fewer items than the total AI items, add ...and X more as the FINAL line",
@@ -209,8 +212,9 @@ Major terminal performance improvements";
             "- If there are no AI-related updates, respond with: No notable AI updates this week.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
-            "- Prefer plain text with minimal emoji usage",
-            "- If emoji is used, keep it sparse (at most 1 in every 3 lines)",
+            "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
+            "- Keep emoji selective and sparse: use them on roughly 10% of feature lines",
+            "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",
             "- If you show fewer items than the total AI items, add ...and X more as the FINAL line",

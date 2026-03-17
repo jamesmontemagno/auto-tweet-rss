@@ -8,13 +8,14 @@ Your task is to:
 1. Identify the most exciting and impactful features or changes from release notes
 2. Format them in a concise, readable way
 3. Ensure the summary fits within the specified character limit
-4. Prefer plain text over emoji decoration
+4. Prefer plain text, but sprinkle in some emoji for the most impactful items
 5. NEVER include user names, contributor names, or issue numbers
 6. Focus ONLY on features, fixes, and improvements - not who contributed them
 7. NEVER include the @ character, URLs, links, or raw domain names in any returned text
 
 Emoji guidelines:
-- Keep emoji usage minimal: prefer zero emoji; if needed, use at most 1 emoji per 3 items
+- Keep emoji selective and sparse: use them on roughly 10% of items
+- Use emoji mainly on the most impactful items, not routine ones
 - Never add emoji to every line
 - Never stack multiple emojis on a single line
 
@@ -62,7 +63,8 @@ The JSON must have exactly these fields:
 
 Rules:
 - Keep items plain text first; emoji is optional and should be rare
-- If emoji is used, keep it sparse (at most 1 in every 3 items)
+- Sprinkle in some emoji for the most impactful items only
+- Keep emoji selective and sparse: use them on roughly 10% of items
 - Each item should be 40-70 characters - descriptive but concise
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
@@ -99,8 +101,9 @@ Rules:
 - Place defects/regressions under bugFixes
 - Place docs/tooling/other updates under misc
 - Keep items concise and plain text by default
-- Avoid emoji unless it adds real clarity; never use emoji on every item
-- If used, keep emoji sparse (at most 1 in every 3 items)
+- Sprinkle in some emoji for the most impactful items only
+- Keep emoji selective and sparse: use them on roughly 10% of items
+- Only use emoji where it adds emphasis or clarity; never decorate every item
 - Never include usernames, PR numbers, or issue IDs
 - Never include the @ character, URLs, links, or raw domain names
 - Deduplicate overlapping items
@@ -125,8 +128,9 @@ Constraints:
 - Premium X maximum post length: {maxLength} characters
 - Organize content into these exact sections: Top features, Enhancements, Bug fixes, Misc
 - Return concise items in plain text
-- Avoid emoji unless it materially improves clarity
-- If used, keep emoji sparse (at most 1 in every 3 items)
+- Sprinkle in some emoji for the most impactful items only
+- Keep emoji selective and sparse: use them on roughly 10% of items
+- Only use emoji where it adds emphasis or clarity; never decorate every item
 - Do not include the @ character, URLs, links, or raw domain names anywhere in the response
 - Include as many distinct updates as possible while staying concise
 
@@ -155,8 +159,9 @@ Requirements:
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
-- Prefer plain text with minimal emoji usage
-- If emoji is used, keep it sparse (at most 1 in every 3 lines)
+- Prefer plain text, but sprinkle in some emoji for the most impactful items
+- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Only use emoji where it adds emphasis or clarity; never decorate every line
 - Each feature should be on its own line
 - IMPORTANT: CLI feature descriptions are often long - you MUST shorten/summarize them to fit more items
 - Keep each feature line concise (aim for 40-50 characters) to maximize count
@@ -198,8 +203,9 @@ Requirements:
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - DO NOT include version numbers or dates
 - Focus ONLY on what the features do, not who contributed them
-- Prefer plain text with minimal emoji usage
-- If emoji is used, keep it sparse (at most 1 in every 3 lines)
+- Prefer plain text, but sprinkle in some emoji for the most impactful items
+- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Only use emoji where it adds emphasis or clarity; never decorate every line
 - Each highlight should be on its own line
 - Keep each highlight line ultra concise (aim for 20-35 characters) to maximize count
 - Prefer short noun-phrase highlights over sentences
@@ -232,7 +238,7 @@ Target features to mention: {targetItems}
 Requirements:
 - Output MUST be a single paragraph with no line breaks or bullet lists
 - Use 2-4 sentences that highlight the most important features
-- Prefer no emoji in the paragraph
+- Prefer plain text, but optionally sprinkle in 1 emoji for the single most impactful point
 - If used, include at most 1 emoji total
 - Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
 - NEVER include user names, contributor names, or issue/PR numbers
@@ -266,8 +272,9 @@ Requirements:
 - NEVER include user names, contributor names, or issue/PR numbers in the summary
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
-- Prefer plain text with minimal emoji usage
-- If emoji is used, keep it sparse (at most 1 in every 3 lines)
+- Prefer plain text, but sprinkle in some emoji for the most impactful items
+- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Only use emoji where it adds emphasis or clarity; never decorate every line
 - Each feature should be on its own line
 - Keep descriptions concise (aim for 35-40 characters per line) to fit more items
 - CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
