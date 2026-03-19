@@ -14,10 +14,15 @@ Your task is to:
 7. NEVER include the @ character, URLs, links, or raw domain names in any returned text
 
 Emoji guidelines:
-- Keep emoji selective and sparse: use them on roughly 10% of items
+- Keep emoji selective and sparse: use them on roughly 15-20% of items
 - Use emoji mainly on the most impactful items, not routine ones
 - Never add emoji to every line
 - Never stack multiple emojis on a single line
+
+List formatting guidelines:
+- Whenever you output a list, EVERY list item line MUST start with ""• ""
+- Keep section headers, intro sentences, and the final ""...and X more"" line unbulleted
+- Never use -, *, or numbered lists for feature items
 
 Keep the tone exciting and developer-friendly. Focus on what matters most to users.";
 
@@ -64,7 +69,8 @@ The JSON must have exactly these fields:
 Rules:
 - Keep items plain text first; emoji is optional and should be rare
 - Sprinkle in some emoji for the most impactful items only
-- Keep emoji selective and sparse: use them on roughly 10% of items
+- Keep emoji selective and sparse: use them on roughly 15-20% of items
+- Every item string should start with ""• ""
 - Each item should be 40-70 characters - descriptive but concise
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
@@ -102,7 +108,8 @@ Rules:
 - Place docs/tooling/other updates under misc
 - Keep items concise and plain text by default
 - Sprinkle in some emoji for the most impactful items only
-- Keep emoji selective and sparse: use them on roughly 10% of items
+- Keep emoji selective and sparse: use them on roughly 15-20% of items
+- Every item string in every section must start with ""• ""
 - Only use emoji where it adds emphasis or clarity; never decorate every item
 - Never include usernames, PR numbers, or issue IDs
 - Never include the @ character, URLs, links, or raw domain names
@@ -129,7 +136,8 @@ Constraints:
 - Organize content into these exact sections: Top features, Enhancements, Bug fixes, Misc
 - Return concise items in plain text
 - Sprinkle in some emoji for the most impactful items only
-- Keep emoji selective and sparse: use them on roughly 10% of items
+- Keep emoji selective and sparse: use them on roughly 15-20% of items
+- Every item string in every section must start with ""• ""
 - Only use emoji where it adds emphasis or clarity; never decorate every item
 - Do not include the @ character, URLs, links, or raw domain names anywhere in the response
 - Include as many distinct updates as possible while staying concise
@@ -160,7 +168,8 @@ Requirements:
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
 - Prefer plain text, but sprinkle in some emoji for the most impactful items
-- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines
+- EVERY feature line MUST start with ""• ""
 - Only use emoji where it adds emphasis or clarity; never decorate every line
 - Each feature should be on its own line
 - IMPORTANT: CLI feature descriptions are often long - you MUST shorten/summarize them to fit more items
@@ -173,17 +182,17 @@ Requirements:
 - MAXIMIZE the number of items shown - more items is better than longer descriptions!
 
 Example output format (when total items = 8, showing 5):
-Show compaction status in timeline
-Add Esc-Esc to undo file changes
-Support for GHE Cloud remote agents
-Improved workspace indexing speed
-Fixed file watcher memory leak
+• Show compaction status in timeline
+• Add Esc-Esc to undo file changes
+• Support for GHE Cloud remote agents
+• Improved workspace indexing speed
+• Fixed file watcher memory leak
 ...and 3 more
 
 Example output format (when total items = 3, showing 3):
-Show compaction status in timeline
-Add Esc-Esc to undo file changes
-Support for GHE Cloud remote agents";
+• Show compaction status in timeline
+• Add Esc-Esc to undo file changes
+• Support for GHE Cloud remote agents";
 
     private static string BuildCliWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Create a weekly recap summary of the following Copilot CLI release notes for {releaseTitle}.
@@ -204,7 +213,8 @@ Requirements:
 - DO NOT include version numbers or dates
 - Focus ONLY on what the features do, not who contributed them
 - Prefer plain text, but sprinkle in some emoji for the most impactful items
-- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines
+- EVERY highlight line MUST start with ""• ""
 - Only use emoji where it adds emphasis or clarity; never decorate every line
 - Each highlight should be on its own line
 - Keep each highlight line ultra concise (aim for 20-35 characters) to maximize count
@@ -214,17 +224,17 @@ Requirements:
 - Output ONLY the formatted highlight list, nothing else
 
 Example output format (when total items = 9, showing 5):
-Smarter repo context for agents
-New interactive setup flow
-Faster indexing for large workspaces
-Fixed auth refresh edge cases
-Hardened token storage behavior
+• Smarter repo context for agents
+• New interactive setup flow
+• Faster indexing for large workspaces
+• Fixed auth refresh edge cases
+• Hardened token storage behavior
 ...and 4 more
 
 Example output format (when total items = 3, showing 3):
-Smarter repo context for agents
-Faster indexing for large workspaces
-Fixed auth refresh edge cases";
+• Smarter repo context for agents
+• Faster indexing for large workspaces
+• Fixed auth refresh edge cases";
 
     private static string BuildCliParagraphUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Write a single-paragraph summary of the following Copilot CLI release notes for {releaseTitle}.
@@ -273,7 +283,8 @@ Requirements:
 - NEVER include the @ character, URLs, links, or raw domain names in the summary
 - Focus ONLY on what the feature does, not who contributed it
 - Prefer plain text, but sprinkle in some emoji for the most impactful items
-- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines
+- EVERY feature line MUST start with ""• ""
 - Only use emoji where it adds emphasis or clarity; never decorate every line
 - Each feature should be on its own line
 - Keep descriptions concise (aim for 35-40 characters per line) to fit more items
@@ -284,17 +295,17 @@ Requirements:
 - MAXIMIZE the number of items shown - more items is better than longer descriptions!
 
 Example output format (when total items = 8, showing 6):
-New AI code completion engine
-40% faster suggestion generation
-Fixed context window overflow
-Support for Rust language
-Updated security dependencies
-Added API migration guide
+• New AI code completion engine
+• 40% faster suggestion generation
+• Fixed context window overflow
+• Support for Rust language
+• Updated security dependencies
+• Added API migration guide
 ...and 2 more
 
 Example output format (when total items = 4, showing 4):
-New AI code completion engine
-40% faster suggestion generation
-Fixed context window overflow
-Support for Rust language";
+• New AI code completion engine
+• 40% faster suggestion generation
+• Fixed context window overflow
+• Support for Rust language";
 }

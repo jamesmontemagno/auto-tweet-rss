@@ -23,6 +23,8 @@ public class ReleaseSummarizerService
     private static readonly Regex BulletLinePattern = new(@"^\s*[-*]\s+", RegexOptions.Compiled);
     private static readonly Regex MoreIndicatorLinePattern = new(@"^\s*\.\.\.and\s+(\d+)\s+more\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex EmojiFeatureLinePattern = new(@"^\s*[\p{So}\p{Sk}]", RegexOptions.Compiled);
+    private static readonly Regex PrefixedListLinePattern = new(@"^\s*(?:[-*•]\s+|[\p{So}\p{Sk}]\s+)", RegexOptions.Compiled);
+    private static readonly Regex CategoryHeaderLinePattern = new(@"^\s*(?:[\p{So}\p{Sk}]\s+)?[^\r\n]+:\s*$", RegexOptions.Compiled);
 
     public ReleaseSummarizerService(
         ILogger<ReleaseSummarizerService> logger,
@@ -76,6 +78,7 @@ public class ReleaseSummarizerService
             // Use GetResponseAsync from version 10.2 API
             var response = await _chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken);
             var summary = response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
+            summary = NormalizeSummaryListFormatting(summary, feedType);
             summary = NormalizeMoreIndicator(summary, totalItemCount);
             
             _logger.LogInformation("Generated {FeedType} summary ({Length} chars): {Summary}", feedType, summary.Length, summary);
@@ -257,6 +260,97 @@ public class ReleaseSummarizerService
         }
 
         return normalized;
+    }
+
+    private static string NormalizeSummaryListFormatting(string summary, string feedType)
+    {
+        if (string.IsNullOrWhiteSpace(summary) || string.Equals(feedType, "cli-paragraph", StringComparison.OrdinalIgnoreCase))
+        {
+            return summary;
+        }
+
+        var normalized = summary.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var lines = normalized.Split('\n', StringSplitOptions.None);
+        var firstListLineIndex = FindFirstListLineIndex(lines);
+
+        if (firstListLineIndex < 0)
+        {
+            return normalized;
+        }
+
+        for (var index = firstListLineIndex; index < lines.Length; index++)
+        {
+            var currentLine = lines[index];
+            var trimmed = currentLine.Trim();
+
+            if (string.IsNullOrWhiteSpace(trimmed) || MoreIndicatorLinePattern.IsMatch(trimmed) || CategoryHeaderLinePattern.IsMatch(trimmed))
+            {
+                continue;
+            }
+
+            lines[index] = NormalizeListLine(trimmed);
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static int FindFirstListLineIndex(string[] lines)
+    {
+        var sawContent = false;
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var trimmed = lines[index].Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                if (!sawContent)
+                {
+                    continue;
+                }
+
+                for (var nextIndex = index + 1; nextIndex < lines.Length; nextIndex++)
+                {
+                    var nextTrimmed = lines[nextIndex].Trim();
+                    if (string.IsNullOrWhiteSpace(nextTrimmed))
+                    {
+                        continue;
+                    }
+
+                    if (MoreIndicatorLinePattern.IsMatch(nextTrimmed))
+                    {
+                        return -1;
+                    }
+
+                    return nextIndex;
+                }
+
+                return -1;
+            }
+
+            sawContent = true;
+        }
+
+        return Array.FindIndex(lines, line => !string.IsNullOrWhiteSpace(line));
+    }
+
+    private static string NormalizeListLine(string trimmed)
+    {
+        if (trimmed.StartsWith("• ", StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
+        if (trimmed.StartsWith("- ", StringComparison.Ordinal) || trimmed.StartsWith("* ", StringComparison.Ordinal))
+        {
+            return $"• {trimmed[2..].TrimStart()}";
+        }
+
+        if (PrefixedListLinePattern.IsMatch(trimmed))
+        {
+            return $"• {trimmed}";
+        }
+
+        return $"• {trimmed}";
     }
 
     private static string BuildUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, string feedType)

@@ -24,7 +24,9 @@ Requirements:
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
 - Prefer plain text, but sprinkle in some emoji for the most impactful items
-- Keep emoji selective and sparse: use them on roughly 10% of category headers or feature lines
+- Keep emoji selective and sparse: use them on roughly 15-20% of category headers or feature lines
+- Whenever you output a feature list, EVERY feature item line MUST start with ""• ""
+- Keep category headers unbulleted and end them with a colon
 - Only use emoji where it adds emphasis or clarity; never decorate every item
 - Use clear category headers to organize the features
 - Keep individual feature descriptions informative but concise (50-80 chars each)
@@ -36,26 +38,26 @@ Example output format:
 VS Code Insiders delivers a major update with significant improvements across chat, terminal, and editor experiences. This release focuses on performance, discoverability, and enhanced workflows. New AI-powered features and refined UI elements make development more efficient.
 
 Chat & AI:
-Improved inline chat discoverability with new UI
-Chat overlay hover interactions enhanced
-Better performance for long chat sessions
-New workspace context improvements
+• Improved inline chat discoverability with new UI
+• Chat overlay hover interactions enhanced
+• Better performance for long chat sessions
+• New workspace context improvements
 
 Terminal:
-Sticky scroll setting for better navigation
-Faster rendering for large outputs
-Fixed Unicode character display issues
+• Sticky scroll setting for better navigation
+• Faster rendering for large outputs
+• Fixed Unicode character display issues
 
 Editor:
-New IntelliSense improvements for TypeScript
-Multi-cursor enhancements
-Refined syntax highlighting for JSX
-Improved file watcher performance
+• New IntelliSense improvements for TypeScript
+• Multi-cursor enhancements
+• Refined syntax highlighting for JSX
+• Improved file watcher performance
 
 Extensions & Settings:
-New extension marketplace filters
-Enhanced security for extension installations
-Better extension documentation display
+• New extension marketplace filters
+• Enhanced security for extension installations
+• Better extension documentation display
 
 ...and 15 more updates across debugging, source control, and themes.";
         }
@@ -78,7 +80,8 @@ Requirements:
 - NEVER include the @ character, URLs, links, or raw domain names
 - Focus ONLY on what the feature does, not who contributed it
 - Prefer plain text, but sprinkle in some emoji for the most impactful items
-- Keep emoji selective and sparse: use them on roughly 10% of feature lines
+- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines
+- EVERY feature line MUST start with ""• ""
 - Only use emoji where it adds emphasis or clarity; never decorate every line
 - Keep descriptions VERY concise (25-40 characters per line) to maximize the number of features shown
 - Prioritize brevity over detail - shorter descriptions allow more features to be listed
@@ -91,21 +94,21 @@ Requirements:
 - REMEMBER: More features shown explicitly is ALWAYS better than longer descriptions!
 
 Example output format (showing 4 features from 6 total, with 2 omitted):
-Faster bracket colorization
-Improved terminal rendering
-New sticky scroll setting
-Enhanced chat overlay UI
+• Faster bracket colorization
+• Improved terminal rendering
+• New sticky scroll setting
+• Enhanced chat overlay UI
 ...and 2 more
 
 Example output format (showing 5 consolidated features from 8 list items, all features shown):
-Faster bracket colorization
-Improved terminal rendering
-New sticky scroll setting
-Enhanced chat overlay UI
-Fixed file watcher issue
+• Faster bracket colorization
+• Improved terminal rendering
+• New sticky scroll setting
+• Enhanced chat overlay UI
+• Fixed file watcher issue
 
 Example output format (single feature from multiple related list items):
-Major terminal performance improvements";
+• Major terminal performance improvements";
     }
 
     public static string BuildVSCodeWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems)
@@ -129,7 +132,8 @@ Major terminal performance improvements";
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Focus ONLY on what the features do, not who contributed them",
             "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
-            "- Keep emoji selective and sparse: use them on roughly 10% of feature lines",
+            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines",
+            "- EVERY feature line MUST start with \"• \"",
             "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",
@@ -141,10 +145,10 @@ Major terminal performance improvements";
             "Example output format:",
             "This week VS Code Insiders brings chat refinements, faster terminal rendering, and new editor conveniences.",
             string.Empty,
-            "Improved inline chat discoverability",
-            "Faster terminal rendering for large output",
-            "New sticky scroll setting in terminal",
-            "Chat overlay hover UI enhanced",
+            "• Improved inline chat discoverability",
+            "• Faster terminal rendering for large output",
+            "• New sticky scroll setting in terminal",
+            "• Chat overlay hover UI enhanced",
             "...and 5 more"
         };
 
@@ -172,7 +176,8 @@ Major terminal performance improvements";
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
-            "- Keep emoji selective and sparse: use them on roughly 10% of feature lines",
+            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines",
+            "- EVERY feature line MUST start with \"• \"",
             "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 40-50 characters per line)",
@@ -183,9 +188,9 @@ Major terminal performance improvements";
             "Example output format:",
             "VS Code Insiders expands AI workflows with stronger chat actions and richer inline suggestions.",
             string.Empty,
-            "New inline chat actions for refactors",
-            "Smarter workspace context retrieval",
-            "Faster AI response streaming",
+            "• New inline chat actions for refactors",
+            "• Smarter workspace context retrieval",
+            "• Faster AI response streaming",
             "...and 2 more"
         };
 
@@ -213,7 +218,8 @@ Major terminal performance improvements";
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
-            "- Keep emoji selective and sparse: use them on roughly 10% of feature lines",
+            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines",
+            "- EVERY feature line MUST start with \"• \"",
             "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",
@@ -224,9 +230,9 @@ Major terminal performance improvements";
             "Example output format:",
             "This week brings stronger AI chat workflows and better inline suggestion control.",
             string.Empty,
-            "New chat actions for docs edits",
-            "Smarter prompt variables in chat",
-            "Faster AI responses in large repos",
+            "• New chat actions for docs edits",
+            "• Smarter prompt variables in chat",
+            "• Faster AI responses in large repos",
             "...and 3 more"
         };
 
