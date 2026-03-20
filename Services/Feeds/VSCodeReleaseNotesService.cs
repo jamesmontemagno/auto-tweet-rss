@@ -51,6 +51,9 @@ public partial class VSCodeReleaseNotesService
     [GeneratedRegex(@"\[([^\]]*)\]\([^\)]*\)")]
     private static partial Regex MarkdownLinkStripPattern();
 
+    [GeneratedRegex(@"^[*-]\s+")]
+    private static partial Regex MarkdownBulletPrefixPattern();
+
     public VSCodeReleaseNotesService(
         ILogger<VSCodeReleaseNotesService> logger,
         IHttpClientFactory httpClientFactory,
@@ -412,9 +415,10 @@ public partial class VSCodeReleaseNotesService
         {
             var line = lines[i];
             var trimmed = line.TrimEnd('\r');
+            var normalized = trimmed.TrimStart();
 
             // Check for ## date heading
-            var dateMatch = MarkdownDateHeadingPattern().Match(trimmed);
+            var dateMatch = MarkdownDateHeadingPattern().Match(normalized);
             if (dateMatch.Success)
             {
                 // Flush current bullet if any
@@ -425,7 +429,7 @@ public partial class VSCodeReleaseNotesService
                 {
                     currentSection = new MarkdownDateSection { Date = parsedDate.Value };
                     sections.Add(currentSection);
-                    currentCategory = ExtractCategory(trimmed);
+                    currentCategory = ExtractCategory(normalized);
                 }
                 continue;
             }
@@ -434,19 +438,19 @@ public partial class VSCodeReleaseNotesService
             if (currentSection == null) continue;
 
             // Check for a new bullet point (* ...)
-            if (trimmed.StartsWith("* "))
+            if (MarkdownBulletPrefixPattern().IsMatch(normalized))
             {
                 // Flush previous bullet
                 FlushBullet(currentBulletLines, currentSection, currentCategory);
-                currentBulletLines.Add(trimmed[2..].TrimEnd());
+                currentBulletLines.Add(MarkdownBulletPrefixPattern().Replace(normalized, string.Empty, 1).TrimEnd());
                 continue;
             }
 
             // Continuation line of a multi-line bullet (indented or non-empty, non-heading)
-            if (currentBulletLines.Count > 0 && !string.IsNullOrWhiteSpace(trimmed)
-                && !trimmed.StartsWith('#'))
+            if (currentBulletLines.Count > 0 && !string.IsNullOrWhiteSpace(normalized)
+                && !normalized.StartsWith('#'))
             {
-                currentBulletLines.Add(trimmed.TrimEnd());
+                currentBulletLines.Add(normalized.TrimEnd());
                 continue;
             }
 

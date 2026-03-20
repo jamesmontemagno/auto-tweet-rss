@@ -19,13 +19,16 @@ Requirements:
 - This is a FULL RELEASE SUMMARY - be comprehensive and detailed
 - Start with 3-5 sentences providing a high-level overview of the major themes and improvements
 - Maximum length: {maxLength} characters (you have plenty of space - use it wisely)
+- This output may be split into a threaded social post, so formatting must stay stable line-by-line
 - Group features by category (e.g., Chat, Terminal, Editor, Extensions, etc.)
 - Include as many important features as possible, organized by their categories
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
 - Prefer plain text, but sprinkle in some emoji for the most impactful items
-- Keep emoji selective and sparse: use them on roughly 15-20% of category headers or feature lines
+- Keep emoji selective and sparse: use them on roughly 15-20% of category headers or feature lines, never more than one emoji per line
+- If you include overview sentences, add a blank line before the first category header
 - Whenever you output a feature list, EVERY feature item line MUST start with ""• ""
+- NEVER output plain unbulleted feature lines
 - Keep category headers unbulleted and end them with a colon
 - Only use emoji where it adds emphasis or clarity; never decorate every item
 - Use clear category headers to organize the features
@@ -76,12 +79,14 @@ Requirements:
 - Consolidate related list items into single feature descriptions rather than listing each separately
 - Output ONLY a list of the most important features, one per line
 - Do NOT include any introductory sentences, paragraph summary, or commentary
+- This output will be split into a threaded social post, so every feature must remain a standalone line
 - NEVER include user names, contributor names, or issue/PR numbers
 - NEVER include the @ character, URLs, links, or raw domain names
 - Focus ONLY on what the feature does, not who contributed it
 - Prefer plain text, but sprinkle in some emoji for the most impactful items
-- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines
+- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines, never more than one emoji per line
 - EVERY feature line MUST start with ""• ""
+- NEVER return a plain sentence list without the leading ""• "" marker
 - Only use emoji where it adds emphasis or clarity; never decorate every line
 - Keep descriptions VERY concise (25-40 characters per line) to maximize the number of features shown
 - Prioritize brevity over detail - shorter descriptions allow more features to be listed
@@ -126,14 +131,16 @@ Example output format (single feature from multiple related list items):
             "Requirements:",
             $"- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)",
             "- Start with 1-2 sentences summarizing the week's most impactful VS Code Insiders changes",
+            "- Leave exactly one blank line after the summary sentences before the feature list",
             $"- After the summary sentences, include UP TO {targetItems} of the most important features across the week",
             "- Deduplicate similar items across days; focus on themes and top features",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Focus ONLY on what the features do, not who contributed them",
             "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
-            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines",
+            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines, never more than one emoji per line",
             "- EVERY feature line MUST start with \"• \"",
+            "- NEVER output plain unbulleted feature lines",
             "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",
@@ -171,13 +178,15 @@ Example output format (single feature from multiple related list items):
             $"- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)",
             "- Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)",
             "- Start with 1-2 sentences summarizing AI themes for the release",
+            "- Leave exactly one blank line after the summary sentences before the feature list",
             $"- After the summary sentences, include UP TO {targetItems} of the most important AI features",
             "- If there are no AI-related updates, respond with: No notable AI updates in this release.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
-            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines",
+            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines, never more than one emoji per line",
             "- EVERY feature line MUST start with \"• \"",
+            "- NEVER output plain unbulleted feature lines",
             "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 40-50 characters per line)",
@@ -213,13 +222,15 @@ Example output format (single feature from multiple related list items):
             $"- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)",
             "- Include ONLY AI-related features (chat, copilots, inline suggestions, AI tools, model support, prompt features)",
             "- Start with 1-2 sentences summarizing AI themes across the week",
+            "- Leave exactly one blank line after the summary sentences before the feature list",
             $"- After the summary sentences, include UP TO {targetItems} of the most important AI features",
             "- If there are no AI-related updates, respond with: No notable AI updates this week.",
             "- NEVER include user names, contributor names, or issue/PR numbers in the summary",
             "- NEVER include the @ character, URLs, links, or raw domain names in the summary",
             "- Prefer plain text, but sprinkle in some emoji for the most impactful items",
-            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines",
+            "- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines, never more than one emoji per line",
             "- EVERY feature line MUST start with \"• \"",
+            "- NEVER output plain unbulleted feature lines",
             "- Only use emoji where it adds emphasis or clarity; never decorate every line",
             "- Each feature should be on its own line",
             "- Keep descriptions concise (aim for 35-45 characters per line)",

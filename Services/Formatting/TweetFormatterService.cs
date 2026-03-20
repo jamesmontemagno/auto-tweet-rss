@@ -39,6 +39,9 @@ public partial class TweetFormatterService
     [GeneratedRegex(@"^\s*(?:[\p{So}\p{Sk}]\s+)?[^\r\n]+:\s*$")]
     private static partial Regex SectionHeaderPattern();
 
+    [GeneratedRegex(@"^[\p{So}\p{Sk}]")]
+    private static partial Regex LeadingEmojiPattern();
+
     public TweetFormatterService(ILogger<TweetFormatterService> logger, ReleaseSummarizerService? releaseSummarizer = null)
     {
         _logger = logger;
@@ -1327,25 +1330,123 @@ public partial class TweetFormatterService
     private IReadOnlyList<string> BuildThreadFromSummaryLines(
         string header, string summary, int totalCount, string link, string hashtag, int maxPostLength, bool useXWeightedLength)
     {
-        summary = NormalizeGeneratedListText(summary);
         var topN = GetTopHighlightsCount();
-        var maxLines = totalCount > 0 ? totalCount : int.MaxValue;
-
-        // Split summary into individual lines, filtering out intro/commentary lines and
-        // ensuring we never create more thread items than the actual detected feature count.
-        var lines = summary
+        var hasExplicitMoreIndicator = summary
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(l => l.Trim())
-            .Where(l => !string.IsNullOrWhiteSpace(l) &&
-                        !l.StartsWith("...and ", StringComparison.OrdinalIgnoreCase) &&
-                        !IsThreadIntroLine(l))
+            .Select(line => line.Trim())
+            .Any(IsMoreIndicatorLine);
+        var lines = ExtractThreadFeatureLines(summary, totalCount);
+        var omittedCount = totalCount > 0 ? Math.Max(0, totalCount - lines.Count) : 0;
+
+        var highlights = (IReadOnlyList<string>)lines.Take(topN).ToList();
+        var followUpLines = lines.Skip(topN).ToList();
+        var followUpGroups = GroupFeatureLines(followUpLines, 4).ToList();
+
+        if (omittedCount > 0 && !hasExplicitMoreIndicator)
+        {
+            var moreLine = $"...and {omittedCount} more";
+            if (followUpGroups.Count == 0)
+            {
+                followUpGroups.Add(moreLine);
+            }
+            else
+            {
+                followUpGroups[^1] = $"{followUpGroups[^1]}\n{moreLine}";
+            }
+        }
+
+        return AssembleThread(header, highlights, followUpGroups, totalCount, link, hashtag, maxPostLength, useXWeightedLength);
+    }
+
+    private static List<string> ExtractThreadFeatureLines(string summary, int totalCount)
+    {
+        var maxLines = totalCount > 0 ? totalCount : int.MaxValue;
+        var lines = summary
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Where(line => !IsMoreIndicatorLine(line))
+            .Where(line => !IsThreadIntroLine(RemoveListDecorators(line)))
+            .Where(line => !SectionHeaderPattern().IsMatch(RemoveListDecorators(line)))
+            .Select(NormalizeListItem)
             .Take(maxLines)
             .ToList();
 
-        var highlights = (IReadOnlyList<string>)lines.Take(topN).ToList();
-        var followUpGroups = GroupFeatureLines(lines.Skip(topN).ToList(), 4);
+        return EnsureSparseEmoji(lines);
+    }
 
-        return AssembleThread(header, highlights, followUpGroups, totalCount, link, hashtag, maxPostLength, useXWeightedLength);
+    private static List<string> EnsureSparseEmoji(IReadOnlyList<string> lines)
+    {
+        if (lines.Count == 0)
+        {
+            return [];
+        }
+
+        var normalized = lines.Select(NormalizeListItem).ToList();
+        if (normalized.Any(HasLeadingEmojiAfterBullet))
+        {
+            return normalized;
+        }
+
+        var withEmoji = new List<string>(normalized.Count);
+        for (var index = 0; index < normalized.Count; index++)
+        {
+            var line = normalized[index];
+            if (index == 0 || index % 5 == 0)
+            {
+                withEmoji.Add(AddEmojiToBulletLine(line));
+            }
+            else
+            {
+                withEmoji.Add(line);
+            }
+        }
+
+        return withEmoji;
+    }
+
+    private static bool HasLeadingEmojiAfterBullet(string line)
+    {
+        var content = RemoveBulletPrefix(line);
+        return !string.IsNullOrWhiteSpace(content) && LeadingEmojiPattern().IsMatch(content);
+    }
+
+    private static string AddEmojiToBulletLine(string line)
+    {
+        var normalized = NormalizeListItem(line);
+        var content = RemoveBulletPrefix(normalized);
+        if (string.IsNullOrWhiteSpace(content) || LeadingEmojiPattern().IsMatch(content))
+        {
+            return normalized;
+        }
+
+        return $"• {GetEmojiForFeature(content)} {content}";
+    }
+
+    private static string RemoveBulletPrefix(string line)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.StartsWith("• ", StringComparison.Ordinal)
+            || trimmed.StartsWith("- ", StringComparison.Ordinal)
+            || trimmed.StartsWith("* ", StringComparison.Ordinal))
+        {
+            return trimmed[2..].TrimStart();
+        }
+
+        return trimmed;
+    }
+
+    private static string RemoveListDecorators(string line)
+    {
+        var content = RemoveBulletPrefix(line);
+        if (LeadingEmojiPattern().IsMatch(content) && content.Length > 1)
+        {
+            content = content[1..].TrimStart();
+        }
+
+        return content;
     }
 
     private static bool IsThreadIntroLine(string line)

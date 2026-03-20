@@ -357,10 +357,10 @@ public class ReleaseSummarizerService
     {
         if (feedType.StartsWith("vscode", StringComparison.OrdinalIgnoreCase))
         {
-            var estimatedCharsPerItem = 40;
+            var estimatedCharsPerItem = maxLength >= 700 ? 32 : maxLength >= 500 ? 36 : 40;
             var reserveForSuffix = totalItemCount > 5 ? 15 : 0;
             var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
-            maxItems = Math.Min(maxItems, 10);
+            maxItems = Math.Min(maxItems, maxLength >= 700 ? 18 : 12);
             if (totalItemCount > 0)
             {
                 maxItems = Math.Min(maxItems, totalItemCount);
