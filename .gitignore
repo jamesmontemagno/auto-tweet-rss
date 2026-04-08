@@ -7,6 +7,7 @@ x86/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+*.lschache
 
 # Visual Studio files
 .vs/
@@ -28,3 +29,4 @@ Thumbs.db
 # NuGet
 *.nupkg
 packages/
+AutoTweetRss.csproj.lscache

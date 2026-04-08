@@ -12,12 +12,15 @@ public partial class VSCodeReleaseNotesService
     private readonly HttpClient _httpClient;
     private readonly ReleaseSummarizerService? _releaseSummarizer;
     private readonly VSCodeSummaryCacheService? _cacheService;
+    private readonly Dictionary<string, string> _websiteUrlCache = new(StringComparer.OrdinalIgnoreCase);
     
     // Raw GitHub URL pattern for release notes markdown
     private const string RawGitHubBaseUrl = "https://raw.githubusercontent.com/microsoft/vscode-docs/refs/heads/main/release-notes/";
     
     // aka.ms redirect that always resolves to the current insiders release notes markdown
     private const string InsidersRedirectUrl = "https://aka.ms/vscode/updates/insiders";
+
+    private const string WebsiteBaseUrl = "https://code.visualstudio.com/updates/";
     
     // Required front-matter value to validate this is an Insiders release
     private const string RequiredProductEdition = "Insiders";
@@ -53,6 +56,9 @@ public partial class VSCodeReleaseNotesService
 
     [GeneratedRegex(@"^[*-]\s+")]
     private static partial Regex MarkdownBulletPrefixPattern();
+
+    [GeneratedRegex(@"^Feature description with link to issue\.?(?:\s+#issue-number)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex PlaceholderFeaturePattern();
 
     public VSCodeReleaseNotesService(
         ILogger<VSCodeReleaseNotesService> logger,
@@ -115,6 +121,7 @@ public partial class VSCodeReleaseNotesService
                     Date = targetDate,
                     Features = features,
                     VersionUrl = mdUrl,
+                    WebsiteUrl = await ResolveWebsiteUrlAsync(mdUrl),
                     LatestFeatureDate = matchingSections.Max(s => s.Date.Date)
                 };
             }
@@ -213,11 +220,14 @@ public partial class VSCodeReleaseNotesService
             return null;
         }
 
+        var versionUrl = versionUrlForResponse ?? candidateUrls.First();
+
         return new VSCodeReleaseNotes
         {
             Date = endDate.Date,
             Features = allFeatures,
-            VersionUrl = versionUrlForResponse ?? candidateUrls.First(),
+            VersionUrl = versionUrl,
+            WebsiteUrl = await ResolveWebsiteUrlAsync(versionUrl),
             LatestFeatureDate = latestFeatureDate
         };
     }
@@ -256,6 +266,7 @@ public partial class VSCodeReleaseNotesService
                     Date = today,
                     Features = features,
                     VersionUrl = mdUrl,
+                    WebsiteUrl = await ResolveWebsiteUrlAsync(mdUrl),
                     LatestFeatureDate = sections.Max(s => s.Date.Date)
                 };
             }
@@ -490,6 +501,8 @@ public partial class VSCodeReleaseNotesService
 
         if (string.IsNullOrWhiteSpace(cleanText) || cleanText.Length < MinBulletLength) return;
 
+        if (IsPlaceholderFeature(cleanText)) return;
+
         var title = TruncateTitle(cleanText);
 
         section.Features.Add(new VSCodeFeature
@@ -499,6 +512,12 @@ public partial class VSCodeReleaseNotesService
             Category = category,
             Link = link
         });
+    }
+
+    private static bool IsPlaceholderFeature(string text)
+    {
+        var normalized = Regex.Replace(text, @"\s+", " ").Trim();
+        return PlaceholderFeaturePattern().IsMatch(normalized);
     }
 
     // ── URL resolution ───────────────────────────────────────────────────────
@@ -569,6 +588,66 @@ public partial class VSCodeReleaseNotesService
         {
             _logger.LogWarning(ex, "Failed to resolve aka.ms redirect for VS Code version");
             return null;
+        }
+    }
+
+    private async Task<string> ResolveWebsiteUrlAsync(string versionUrl)
+    {
+        if (string.IsNullOrWhiteSpace(versionUrl))
+        {
+            return string.Empty;
+        }
+
+        if (_websiteUrlCache.TryGetValue(versionUrl, out var cachedWebsiteUrl))
+        {
+            return cachedWebsiteUrl;
+        }
+
+        var match = VersionPattern().Match(versionUrl);
+        if (!match.Success)
+        {
+            _websiteUrlCache[versionUrl] = string.Empty;
+            return string.Empty;
+        }
+
+        var websiteUrl = $"{WebsiteBaseUrl}v1_{match.Groups[1].Value}";
+        var resolvedWebsiteUrl = await UrlResolvesAsync(websiteUrl) ? websiteUrl : string.Empty;
+
+        if (string.IsNullOrEmpty(resolvedWebsiteUrl))
+        {
+            _logger.LogInformation("Skipping unresolved VS Code changelog page {Url}", websiteUrl);
+        }
+
+        _websiteUrlCache[versionUrl] = resolvedWebsiteUrl;
+        return resolvedWebsiteUrl;
+    }
+
+    private async Task<bool> UrlResolvesAsync(string url)
+    {
+        try
+        {
+            using var headRequest = new HttpRequestMessage(HttpMethod.Head, url);
+            using var headResponse = await _httpClient.SendAsync(headRequest, HttpCompletionOption.ResponseHeadersRead);
+            if (headResponse.IsSuccessStatusCode)
+            {
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "HEAD request failed while checking VS Code changelog page {Url}", url);
+        }
+
+        try
+        {
+            using var getRequest = new HttpRequestMessage(HttpMethod.Get, url);
+            using var getResponse = await _httpClient.SendAsync(getRequest, HttpCompletionOption.ResponseHeadersRead);
+            return getResponse.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "GET request failed while checking VS Code changelog page {Url}", url);
+            return false;
         }
     }
 
@@ -687,27 +766,11 @@ public partial class VSCodeReleaseNotesService
 /// </summary>
 public class VSCodeReleaseNotes
 {
-    private const string WebsiteBaseUrl = "https://code.visualstudio.com/updates/";
-
     public DateTime Date { get; set; }
     public required List<VSCodeFeature> Features { get; set; }
     public required string VersionUrl { get; set; }
+    public string WebsiteUrl { get; set; } = string.Empty;
     public DateTime? LatestFeatureDate { get; set; }
-
-    /// <summary>
-    /// The human-readable website URL (e.g. https://code.visualstudio.com/updates/v1_110),
-    /// derived from the raw GitHub VersionUrl.
-    /// </summary>
-    public string WebsiteUrl
-    {
-        get
-        {
-            var match = System.Text.RegularExpressions.Regex.Match(VersionUrl, @"(v1_\d+)");
-            return match.Success
-                ? $"{WebsiteBaseUrl}{match.Groups[1].Value}"
-                : VersionUrl;
-        }
-    }
 }
 
 /// <summary>

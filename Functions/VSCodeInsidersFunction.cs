@@ -161,7 +161,8 @@ public class VSCodeInsidersFunction
                 {
                     Date = releaseNotes.Date,
                     Features = featuresForResponse,
-                    VersionUrl = releaseNotes.VersionUrl
+                    VersionUrl = releaseNotes.VersionUrl,
+                    WebsiteUrl = releaseNotes.WebsiteUrl
                 }
                 : releaseNotes;
 

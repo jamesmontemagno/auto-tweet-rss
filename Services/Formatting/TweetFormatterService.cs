@@ -344,9 +344,10 @@ public partial class TweetFormatterService
             $"✨ {featureCount} new {featureWord}");
 
         var highlightsPrefix = "Highlights:\n";
+        var hasLink = !string.IsNullOrWhiteSpace(url);
         var buffer = 4;
         var reservedLength = GetTextLength($"{header}\n\n{highlightsPrefix}", useXWeightedLength)
-            + effectiveUrlLength
+            + (hasLink ? effectiveUrlLength : 0)
             + GetTextLength($"\n\n{VSCodeHashtag}", useXWeightedLength)
             + buffer;
         var availableForHighlights = Math.Max(0, maxPostLength - reservedLength);
@@ -360,12 +361,12 @@ public partial class TweetFormatterService
 
         highlights = NormalizeGeneratedListText(highlights);
 
-        var post = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{VSCodeHashtag}";
+        var post = BuildPostWithOptionalFooter(header, $"{highlightsPrefix}{highlights}", url, VSCodeHashtag);
 
         if (!FitsWithinLimit(post, maxPostLength, useXWeightedLength))
         {
             highlights = TruncatePreservingMoreIndicatorToLimit(highlights, availableForHighlights, useXWeightedLength);
-            post = $"{header}\n\n{highlightsPrefix}{highlights}\n\n{url}\n\n{VSCodeHashtag}";
+            post = BuildPostWithOptionalFooter(header, $"{highlightsPrefix}{highlights}", url, VSCodeHashtag);
         }
 
         return post;
@@ -377,6 +378,7 @@ public partial class TweetFormatterService
             ? FormatShortDate(endDate)
             : $"{FormatShortDate(startDate)}-{FormatShortDate(endDate)}";
         var header = $"🚀 Insiders Update - {dateLabel}";
+        var hasLink = !string.IsNullOrWhiteSpace(url);
 
         if (string.IsNullOrWhiteSpace(summary))
         {
@@ -387,7 +389,7 @@ public partial class TweetFormatterService
 
         var buffer = 4;
         var reservedLength = GetTextLength($"{header}\n\n", useXWeightedLength)
-            + effectiveUrlLength
+            + (hasLink ? effectiveUrlLength : 0)
             + GetTextLength($"\n\n{VSCodeHashtag}", useXWeightedLength)
             + buffer;
         var availableForSummary = Math.Max(0, maxPostLength - reservedLength);
@@ -404,15 +406,42 @@ public partial class TweetFormatterService
             }
         }
 
-        var tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
+        var tweet = BuildPostWithOptionalFooter(header, summary, url, VSCodeHashtag);
 
         if (!FitsWithinLimit(tweet, maxPostLength, useXWeightedLength))
         {
             summary = TruncatePreservingMoreIndicatorToLimit(summary, availableForSummary, useXWeightedLength);
-            tweet = $"{header}\n\n{summary}\n\n{url}\n\n{VSCodeHashtag}";
+            tweet = BuildPostWithOptionalFooter(header, summary, url, VSCodeHashtag);
         }
 
         return tweet;
+    }
+
+    private static string BuildPostWithOptionalFooter(string header, string body, string link, string hashtag)
+    {
+        var sections = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(header))
+        {
+            sections.Add(header.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            sections.Add(body.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(link))
+        {
+            sections.Add(link.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(hashtag))
+        {
+            sections.Add(hashtag.Trim());
+        }
+
+        return string.Join("\n\n", sections);
     }
 
     /// <summary>
@@ -432,7 +461,8 @@ public partial class TweetFormatterService
 
         // Check if the summary ends with "...and X more" pattern
         var match = MoreIndicatorPattern().Match(summary);
-        
+
+        // Preserve the explicit "...and X more" suffix when possible.
         if (match.Success)
         {
             // Extract the "...and X more" suffix
@@ -663,8 +693,7 @@ public partial class TweetFormatterService
                 break;
             }
         }
-        
-        // If we have more features not shown, add indicator
+
         if (features.Count > result.Count && currentLength + 10 < maxLength)
         {
             var remaining = features.Count - result.Count;
@@ -1520,10 +1549,14 @@ public partial class TweetFormatterService
         }
 
         // --- Last post: link + hashtag ---
-        var lastPostContent = $"{link}\n\n{hashtag}";
+        var lastPostContent = BuildPostWithOptionalFooter(string.Empty, string.Empty, link, hashtag);
 
         // Try to merge the last post into the previous follow-up post if there's room
-        if (posts.Count >= 2)
+        if (string.IsNullOrWhiteSpace(lastPostContent))
+        {
+            // Nothing to append.
+        }
+        else if (posts.Count >= 2)
         {
             var prevIndex = posts.Count - 1;
             var merged = $"{posts[prevIndex]}\n\n{lastPostContent}";
@@ -1780,34 +1813,44 @@ public partial class TweetFormatterService
         AppendSection(sb, "Bug fixes", bugFixes, maxLength);
         AppendSection(sb, "Misc", misc, maxLength);
 
-        var footer = $"\n{link}\n\n{hashtag}";
-        if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(footer, useXWeightedLength: true) <= maxLength)
+        var footer = BuildPostWithOptionalFooter(string.Empty, string.Empty, link, hashtag);
+        if (string.IsNullOrWhiteSpace(footer))
         {
-            sb.Append(footer);
+            return FinalizePremiumPost(sb, maxLength);
+        }
+
+        var footerBlock = $"\n\n{footer}";
+        if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(footerBlock, useXWeightedLength: true) <= maxLength)
+        {
+            sb.Append(footerBlock);
         }
         else
         {
-            var budget = maxLength - GetTextLength(sb.ToString(), useXWeightedLength: true) - GetTextLength($"\n\n{hashtag}", useXWeightedLength: true);
-            if (budget > 15)
+            var hashtagBudget = string.IsNullOrWhiteSpace(hashtag)
+                ? 0
+                : GetTextLength($"\n\n{hashtag}", useXWeightedLength: true);
+            var budget = maxLength - GetTextLength(sb.ToString(), useXWeightedLength: true) - hashtagBudget;
+            if (!string.IsNullOrWhiteSpace(link) && budget > 15)
             {
                 var shortenedLink = FitsWithinLimit(link, budget, useXWeightedLength: true)
                     ? link
                     : TruncateToLimit(link, budget, useXWeightedLength: true);
-                sb.Append("\n").Append(shortenedLink).Append("\n\n").Append(hashtag);
+                sb.Append("\n\n").Append(shortenedLink);
+                if (!string.IsNullOrWhiteSpace(hashtag))
+                {
+                    sb.Append("\n\n").Append(hashtag);
+                }
             }
             else
             {
-                sb.Append("\n\n").Append(hashtag);
+                if (!string.IsNullOrWhiteSpace(hashtag))
+                {
+                    sb.Append("\n\n").Append(hashtag);
+                }
             }
         }
 
-        var post = sb.ToString().Trim();
-        if (!FitsWithinLimit(post, maxLength, useXWeightedLength: true))
-        {
-            post = TruncateToLimit(post, maxLength, useXWeightedLength: true);
-        }
-
-        return post;
+        return FinalizePremiumPost(sb, maxLength);
     }
 
     private string BuildPremiumMegaPost(
@@ -1832,27 +1875,48 @@ public partial class TweetFormatterService
         AppendSection(sb, "Bug fixes", bugFixes, maxLength);
         AppendSection(sb, "Misc", misc, maxLength);
 
-        var footer = $"\n{link}\n\n{hashtag}";
-        if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(footer, useXWeightedLength: true) <= maxLength)
+        var footer = BuildPostWithOptionalFooter(string.Empty, string.Empty, link, hashtag);
+        if (string.IsNullOrWhiteSpace(footer))
         {
-            sb.Append(footer);
+            return FinalizePremiumPost(sb, maxLength);
+        }
+
+        var footerBlock = $"\n\n{footer}";
+        if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(footerBlock, useXWeightedLength: true) <= maxLength)
+        {
+            sb.Append(footerBlock);
         }
         else
         {
-            var budget = maxLength - GetTextLength(sb.ToString(), useXWeightedLength: true) - GetTextLength($"\n\n{hashtag}", useXWeightedLength: true);
-            if (budget > 15)
+            var hashtagBudget = string.IsNullOrWhiteSpace(hashtag)
+                ? 0
+                : GetTextLength($"\n\n{hashtag}", useXWeightedLength: true);
+            var budget = maxLength - GetTextLength(sb.ToString(), useXWeightedLength: true) - hashtagBudget;
+            if (!string.IsNullOrWhiteSpace(link) && budget > 15)
             {
                 var shortenedLink = FitsWithinLimit(link, budget, useXWeightedLength: true)
                     ? link
                     : TruncateToLimit(link, budget, useXWeightedLength: true);
-                sb.Append("\n").Append(shortenedLink).Append("\n\n").Append(hashtag);
+                sb.Append("\n\n").Append(shortenedLink);
+                if (!string.IsNullOrWhiteSpace(hashtag))
+                {
+                    sb.Append("\n\n").Append(hashtag);
+                }
             }
             else
             {
-                sb.Append("\n\n").Append(hashtag);
+                if (!string.IsNullOrWhiteSpace(hashtag))
+                {
+                    sb.Append("\n\n").Append(hashtag);
+                }
             }
         }
 
+        return FinalizePremiumPost(sb, maxLength);
+    }
+
+    private static string FinalizePremiumPost(StringBuilder sb, int maxLength)
+    {
         var post = sb.ToString().Trim();
         if (!FitsWithinLimit(post, maxLength, useXWeightedLength: true))
         {
