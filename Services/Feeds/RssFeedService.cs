@@ -36,20 +36,13 @@ public class RssFeedService
                 var id = item.Id ?? string.Empty;
                 var updated = item.LastUpdatedTime;
 
-                // Filter out pre-releases and submodule releases for SDK
+                // SDK posts should only use stable mainline releases (vX.Y.Z).
+                // This excludes beta, preview, and package/submodule titles such as go/*, rust/*, and Java releases.
                 if (isSdkFeed)
                 {
-                    // Skip Go submodule releases like "go/v0.1.16"
-                    if (title.StartsWith("go/", StringComparison.OrdinalIgnoreCase))
+                    if (!IsMainlineStableRelease(title) || IsPreRelease(title, content))
                     {
-                        _logger.LogDebug("Skipping Go submodule release: {Title}", title);
-                        continue;
-                    }
-                    
-                    // Skip preview releases like "v0.1.16-preview.0"
-                    if (IsPreRelease(title, content) || title.Contains("-preview", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _logger.LogDebug("Skipping pre-release: {Title}", title);
+                        _logger.LogDebug("Skipping non-mainline SDK release: {Title}", title);
                         continue;
                     }
                 }
@@ -83,6 +76,11 @@ public class RssFeedService
         }
 
         return entries;
+    }
+
+    private static bool IsMainlineStableRelease(string title)
+    {
+        return Regex.IsMatch(title, @"^v\d+\.\d+\.\d+$", RegexOptions.IgnoreCase);
     }
 
     private static bool IsPreRelease(string title, string content)
