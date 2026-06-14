@@ -41,10 +41,10 @@ public class TestSummaryFunction
             var premiumMode = IsEnabledQuery(req, "premium");
 
             // Validate type parameter
-            if (typeLower != "cli" && typeLower != "sdk" && typeLower != "vscode")
+            if (typeLower != "cli" && typeLower != "sdk" && typeLower != "app" && typeLower != "vscode")
             {
                 response.StatusCode = HttpStatusCode.BadRequest;
-                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli', 'sdk', or 'vscode'.");
+                await response.WriteStringAsync($"Invalid type: {type}. Must be 'cli', 'sdk', 'app', or 'vscode'.");
                 return response;
             }
 
@@ -57,16 +57,25 @@ public class TestSummaryFunction
             // Determine feed URL based on type
             string feedUrl;
             bool isSdkFeed;
+            bool isAppFeed;
             if (typeLower == "sdk")
             {
                 feedUrl = "https://github.com/github/copilot-sdk/releases.atom";
                 isSdkFeed = true;
+                isAppFeed = false;
+            }
+            else if (typeLower == "app")
+            {
+                feedUrl = "https://github.com/github/app/releases.atom";
+                isSdkFeed = false;
+                isAppFeed = true;
             }
             else
             {
                 feedUrl = Environment.GetEnvironmentVariable("RSS_FEED_URL") 
                     ?? "https://github.com/github/copilot-cli/releases.atom";
                 isSdkFeed = false;
+                isAppFeed = false;
             }
 
             _logger.LogInformation("Fetching feed from: {FeedUrl}", feedUrl);
@@ -92,7 +101,9 @@ public class TestSummaryFunction
             {
                 var post = isSdkFeed
                     ? await _tweetFormatterService.FormatSdkPremiumPostForXAsync(latestEntry, useAi: true)
-                    : await _tweetFormatterService.FormatCliPremiumPostForXAsync(latestEntry, useAi: true);
+                    : isAppFeed
+                        ? await _tweetFormatterService.FormatAppPremiumPostForXAsync(latestEntry, useAi: true)
+                        : await _tweetFormatterService.FormatCliPremiumPostForXAsync(latestEntry, useAi: true);
                 thread = [post];
             }
             else
@@ -100,6 +111,10 @@ public class TestSummaryFunction
                 if (isSdkFeed)
                 {
                     thread = await _tweetFormatterService.FormatSdkThreadForXAsync(latestEntry, useAi: true);
+                }
+                else if (isAppFeed)
+                {
+                    thread = await _tweetFormatterService.FormatAppThreadForXAsync(latestEntry, useAi: true);
                 }
                 else
                 {
