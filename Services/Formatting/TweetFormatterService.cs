@@ -1272,7 +1272,7 @@ public partial class TweetFormatterService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to generate AI premium post plan for CLI weekly recap, using fallback");
+                _logger.LogWarning(ex, "Failed to generate AI premium post plan for {ReleaseTitle}, using fallback", releaseTitle);
             }
         }
 
@@ -1807,7 +1807,7 @@ public partial class TweetFormatterService
         {
             var text = StripHtml(h3Match.Groups[1].Value).Trim();
             if (string.IsNullOrWhiteSpace(text) ||
-                IsStructuralReleaseSectionHeading(text) ||
+                ReleaseNoteStructureHelper.IsStructuralReleaseSectionHeading(text) ||
                 text.StartsWith("Other changes", StringComparison.OrdinalIgnoreCase) ||
                 text.StartsWith("New contributor", StringComparison.OrdinalIgnoreCase) ||
                 text.StartsWith("What", StringComparison.OrdinalIgnoreCase))
@@ -1850,15 +1850,6 @@ public partial class TweetFormatterService
         }
 
         return features;
-    }
-
-    private static bool IsStructuralReleaseSectionHeading(string text)
-    {
-        var normalized = text.Trim().TrimEnd(':');
-        return normalized.Equals("Added", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("Changed", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("Fixed", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("Security", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Groups a flat list of lines into chunks of <paramref name="linesPerGroup"/> each.</summary>

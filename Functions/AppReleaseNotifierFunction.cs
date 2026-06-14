@@ -100,14 +100,18 @@ public class AppReleaseNotifierFunction
 
     private List<ReleaseEntry> GetNewEntries(List<ReleaseEntry> entries, string? lastProcessedId)
     {
+        var sortedEntries = entries
+            .OrderByDescending(e => e.Updated)
+            .ToList();
+
         if (string.IsNullOrEmpty(lastProcessedId))
         {
             _logger.LogInformation("First run detected. Processing only the most recent App release.");
-            return entries.OrderByDescending(e => e.Updated).Take(1).ToList();
+            return sortedEntries.Take(1).ToList();
         }
 
         var newEntries = new List<ReleaseEntry>();
-        foreach (var entry in entries)
+        foreach (var entry in sortedEntries)
         {
             if (string.Equals(entry.Id, lastProcessedId, StringComparison.OrdinalIgnoreCase))
             {

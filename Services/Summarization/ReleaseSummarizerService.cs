@@ -117,7 +117,7 @@ public class ReleaseSummarizerService
             {
                 var text = StripHtml(h3Match.Groups[1].Value).Trim();
                 if (!string.IsNullOrWhiteSpace(text) &&
-                    !IsStructuralReleaseSectionHeading(text) &&
+                    !ReleaseNoteStructureHelper.IsStructuralReleaseSectionHeading(text) &&
                     !text.StartsWith("Other changes", StringComparison.OrdinalIgnoreCase) &&
                     !text.StartsWith("New contributor", StringComparison.OrdinalIgnoreCase) &&
                     !text.StartsWith("What", StringComparison.OrdinalIgnoreCase))
@@ -182,15 +182,6 @@ public class ReleaseSummarizerService
         // Normalize whitespace
         var normalized = WhitespacePattern.Replace(withoutTags, " ");
         return normalized.Trim();
-    }
-
-    private static bool IsStructuralReleaseSectionHeading(string text)
-    {
-        var normalized = text.Trim().TrimEnd(':');
-        return normalized.Equals("Added", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("Changed", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("Fixed", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("Security", StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly Regex ContributorLinePattern = new(

@@ -25,7 +25,6 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 - **Deterministic fallback**: When AI is unavailable, threads are built from HTML-parsed release notes so posting always succeeds
 - Posts to Twitter/X using OAuth 1.0a authentication (with reply-chain thread support)
 - Cross-posts VS Code automation to Bluesky (with AT Protocol reply thread support)
-- Tracks state in Azure Blob Storage to prevent duplicate posts (separate state for CLI and SDK)
 - Tracks state in Azure Blob Storage to prevent duplicate posts (separate state for CLI, SDK, and App)
 - Respects platform character limits (280 for X, 300 for Bluesky) per post in the thread
 
