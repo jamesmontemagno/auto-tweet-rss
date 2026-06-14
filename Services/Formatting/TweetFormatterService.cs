@@ -18,6 +18,7 @@ public partial class TweetFormatterService
     private const int UrlLength = 23; // t.co shortens all URLs to 23 chars
     private const string Hashtag = "#GitHubCopilotCLI";
     private const string SdkHashtag = "#GitHubCopilotSDK";
+    private const string AppHashtag = "#GitHubCopilotApp";
     private const string VSCodeHashtag = "#vscode";
     
     // Truncation constants
@@ -884,30 +885,94 @@ public partial class TweetFormatterService
 
     /// <summary>Formats a Copilot CLI release as a thread for X/Twitter.</summary>
     public Task<IReadOnlyList<string>> FormatCliThreadForXAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxTweetLength, Hashtag, useXWeightedLength: true);
+        => FormatReleaseThreadAsync(
+            entry,
+            useAi,
+            feedType: "cli",
+            header: $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!",
+            MaxTweetLength,
+            Hashtag,
+            useXWeightedLength: true);
 
     /// <summary>Formats a Copilot CLI release as a thread for Bluesky.</summary>
     public Task<IReadOnlyList<string>> FormatCliThreadForBlueskyAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: true, MaxBlueskyLength, Hashtag, useXWeightedLength: false);
+        => FormatReleaseThreadAsync(
+            entry,
+            useAi,
+            feedType: "cli",
+            header: $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!",
+            MaxBlueskyLength,
+            Hashtag,
+            useXWeightedLength: false);
 
     /// <summary>Formats a Copilot SDK release as a thread for X/Twitter.</summary>
     public Task<IReadOnlyList<string>> FormatSdkThreadForXAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxTweetLength, SdkHashtag, useXWeightedLength: true);
+        => FormatReleaseThreadAsync(
+            entry,
+            useAi,
+            feedType: "sdk",
+            header: $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!",
+            MaxTweetLength,
+            SdkHashtag,
+            useXWeightedLength: true);
 
     /// <summary>Formats a Copilot SDK release as a thread for Bluesky.</summary>
     public Task<IReadOnlyList<string>> FormatSdkThreadForBlueskyAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleaseThreadAsync(entry, useAi, isCli: false, MaxBlueskyLength, SdkHashtag, useXWeightedLength: false);
+        => FormatReleaseThreadAsync(
+            entry,
+            useAi,
+            feedType: "sdk",
+            header: $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!",
+            MaxBlueskyLength,
+            SdkHashtag,
+            useXWeightedLength: false);
+
+    /// <summary>Formats a GitHub Copilot App release as a thread for X/Twitter.</summary>
+    public Task<IReadOnlyList<string>> FormatAppThreadForXAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleaseThreadAsync(
+            entry,
+            useAi,
+            feedType: "app",
+            header: $"{ReleaseEmojiCLI} GitHub Copilot App {entry.Title} released!",
+            MaxTweetLength,
+            AppHashtag,
+            useXWeightedLength: true);
 
     /// <summary>Formats a Copilot CLI release as a single Premium X mega-post.</summary>
     public Task<string> FormatCliPremiumPostForXAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleasePremiumPostForXAsync(entry, useAi, isCli: true, Hashtag);
+        => FormatReleasePremiumPostForXAsync(
+            entry,
+            useAi,
+            feedType: "cli",
+            header: $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!",
+            Hashtag);
 
     /// <summary>Formats a Copilot SDK release as a single Premium X mega-post.</summary>
     public Task<string> FormatSdkPremiumPostForXAsync(ReleaseEntry entry, bool useAi = false)
-        => FormatReleasePremiumPostForXAsync(entry, useAi, isCli: false, SdkHashtag);
+        => FormatReleasePremiumPostForXAsync(
+            entry,
+            useAi,
+            feedType: "sdk",
+            header: $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!",
+            SdkHashtag);
+
+    /// <summary>Formats a GitHub Copilot App release as a single Premium X mega-post.</summary>
+    public Task<string> FormatAppPremiumPostForXAsync(ReleaseEntry entry, bool useAi = false)
+        => FormatReleasePremiumPostForXAsync(
+            entry,
+            useAi,
+            feedType: "app",
+            header: $"{ReleaseEmojiCLI} GitHub Copilot App {entry.Title} released!",
+            AppHashtag);
 
     private async Task<IReadOnlyList<string>> FormatReleaseThreadAsync(
-        ReleaseEntry entry, bool useAi, bool isCli, int maxPostLength, string hashtag, bool useXWeightedLength)
+        ReleaseEntry entry,
+        bool useAi,
+        string feedType,
+        string header,
+        int maxPostLength,
+        string hashtag,
+        bool useXWeightedLength)
     {
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
         ThreadPlan? plan = null;
@@ -916,7 +981,6 @@ public partial class TweetFormatterService
         {
             try
             {
-                var feedType = isCli ? "cli" : "sdk";
                 plan = await _releaseSummarizer.PlanThreadAsync(
                     entry.Title, entry.Content, feedType, maxPostLength,
                     GetMaxThreadPosts(), GetTopHighlightsCount());
@@ -927,17 +991,14 @@ public partial class TweetFormatterService
             }
         }
 
-        var header = isCli
-            ? $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!"
-            : $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
-
         return BuildReleaseThread(entry, plan, header, maxPostLength, hashtag, useXWeightedLength);
     }
 
     private async Task<string> FormatReleasePremiumPostForXAsync(
         ReleaseEntry entry,
         bool useAi,
-        bool isCli,
+        string feedType,
+        string header,
         string hashtag)
     {
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
@@ -948,7 +1009,6 @@ public partial class TweetFormatterService
         {
             try
             {
-                var feedType = isCli ? "cli" : "sdk";
                 premiumPlan = await _releaseSummarizer.PlanPremiumPostAsync(
                     entry.Title,
                     entry.Content,
@@ -971,10 +1031,6 @@ public partial class TweetFormatterService
                 _logger.LogWarning(ex, "Failed to generate AI premium post plan, using fallback");
             }
         }
-
-        var header = isCli
-            ? $"{ReleaseEmojiCLI} Copilot CLI v{entry.Title} released!"
-            : $"{ReleaseEmojiSDK} Copilot SDK {entry.Title} released!";
 
         if (premiumPlan != null)
         {
@@ -1034,6 +1090,26 @@ public partial class TweetFormatterService
         bool useAi = false)
         => FormatWeeklyCliRecapThreadInternalAsync(entries, weekStartPacific, weekEndPacific, improvementCount, useAi, MaxTweetLength, useXWeightedLength: true);
 
+    /// <summary>Formats a GitHub Copilot App weekly recap as a thread for X/Twitter.</summary>
+    public Task<IReadOnlyList<string>> FormatWeeklyAppRecapThreadAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi = false)
+        => FormatWeeklyReleaseRecapThreadInternalAsync(
+            entries,
+            weekStartPacific,
+            weekEndPacific,
+            improvementCount,
+            useAi,
+            MaxTweetLength,
+            useXWeightedLength: true,
+            releaseTitle: "GitHub Copilot App weekly recap",
+            feedType: "app-weekly",
+            url: "https://github.com/github/app/releases",
+            hashtag: AppHashtag);
+
     private async Task<IReadOnlyList<string>> FormatWeeklyCliRecapThreadInternalAsync(
         IReadOnlyList<ReleaseEntry> entries,
         DateTimeOffset weekStartPacific,
@@ -1042,6 +1118,31 @@ public partial class TweetFormatterService
         bool useAi,
         int maxPostLength,
         bool useXWeightedLength)
+        => await FormatWeeklyReleaseRecapThreadInternalAsync(
+            entries,
+            weekStartPacific,
+            weekEndPacific,
+            improvementCount,
+            useAi,
+            maxPostLength,
+            useXWeightedLength,
+            releaseTitle: "Copilot CLI weekly recap",
+            feedType: "cli-weekly",
+            url: "https://github.com/github/copilot-cli/releases",
+            hashtag: Hashtag);
+
+    private async Task<IReadOnlyList<string>> FormatWeeklyReleaseRecapThreadInternalAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi,
+        int maxPostLength,
+        bool useXWeightedLength,
+        string releaseTitle,
+        string feedType,
+        string url,
+        string hashtag)
     {
         var releaseCount = entries.Count;
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
@@ -1061,7 +1162,7 @@ public partial class TweetFormatterService
             {
                 var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
                 plan = await _releaseSummarizer.PlanThreadAsync(
-                    "Copilot CLI weekly recap", combinedContent, "cli-weekly",
+                    releaseTitle, combinedContent, feedType,
                     maxPostLength, GetMaxThreadPosts(), GetTopHighlightsCount());
             }
             catch (Exception ex)
@@ -1091,8 +1192,7 @@ public partial class TweetFormatterService
         var remaining = allItems.Skip(topN).ToList();
         var followUpGroups = PackItemsIntoPosts(remaining, maxPostLength, useXWeightedLength);
 
-        var url = "https://github.com/github/copilot-cli/releases";
-        return AssembleThread(header, highlights, followUpGroups, totalCount, url, Hashtag, maxPostLength, useXWeightedLength);
+        return AssembleThread(header, highlights, followUpGroups, totalCount, url, hashtag, maxPostLength, useXWeightedLength);
     }
 
     /// <summary>Formats a CLI weekly recap as a single Premium X mega-post.</summary>
@@ -1102,6 +1202,45 @@ public partial class TweetFormatterService
         DateTimeOffset weekEndPacific,
         int improvementCount,
         bool useAi = false)
+        => await FormatWeeklyReleaseRecapPremiumPostForXAsync(
+            entries,
+            weekStartPacific,
+            weekEndPacific,
+            improvementCount,
+            useAi,
+            releaseTitle: "Copilot CLI weekly recap",
+            feedType: "cli-weekly",
+            url: "https://github.com/github/copilot-cli/releases",
+            hashtag: Hashtag);
+
+    /// <summary>Formats a GitHub Copilot App weekly recap as a single Premium X mega-post.</summary>
+    public Task<string> FormatWeeklyAppRecapPremiumPostForXAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi = false)
+        => FormatWeeklyReleaseRecapPremiumPostForXAsync(
+            entries,
+            weekStartPacific,
+            weekEndPacific,
+            improvementCount,
+            useAi,
+            releaseTitle: "GitHub Copilot App weekly recap",
+            feedType: "app-weekly",
+            url: "https://github.com/github/app/releases",
+            hashtag: AppHashtag);
+
+    private async Task<string> FormatWeeklyReleaseRecapPremiumPostForXAsync(
+        IReadOnlyList<ReleaseEntry> entries,
+        DateTimeOffset weekStartPacific,
+        DateTimeOffset weekEndPacific,
+        int improvementCount,
+        bool useAi,
+        string releaseTitle,
+        string feedType,
+        string url,
+        string hashtag)
     {
         var releaseCount = entries.Count;
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
@@ -1122,22 +1261,20 @@ public partial class TweetFormatterService
             {
                 var combinedContent = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
                 premiumPlan = await _releaseSummarizer.PlanPremiumPostAsync(
-                    "Copilot CLI weekly recap", combinedContent, "cli-weekly", MaxPremiumTweetLength);
+                    releaseTitle, combinedContent, feedType, MaxPremiumTweetLength);
 
                 if (premiumPlan == null)
                 {
                     threadPlan = await _releaseSummarizer.PlanThreadAsync(
-                        "Copilot CLI weekly recap", combinedContent, "cli-weekly",
+                        releaseTitle, combinedContent, feedType,
                         MaxPremiumTweetLength, maxPosts: 1, topHighlights: Math.Max(GetTopHighlightsCount(), 5));
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to generate AI premium post plan for CLI weekly recap, using fallback");
+                _logger.LogWarning(ex, "Failed to generate AI premium post plan for {ReleaseTitle}, using fallback", releaseTitle);
             }
         }
-
-        const string url = "https://github.com/github/copilot-cli/releases";
 
         if (premiumPlan != null)
         {
@@ -1149,7 +1286,7 @@ public partial class TweetFormatterService
                 premiumPlan.BugFixes.Select(NormalizeListItem).ToList(),
                 premiumPlan.Misc.Select(NormalizeListItem).ToList(),
                 url,
-                Hashtag,
+                hashtag,
                 MaxPremiumTweetLength);
         }
         var combinedForFallback = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
@@ -1158,7 +1295,7 @@ public partial class TweetFormatterService
             .ToList();
         var totalCount = threadPlan?.TotalCount > 0 ? threadPlan.TotalCount : rankedItems.Count;
 
-        return BuildPremiumMegaPost(header, totalCount, rankedItems, url, Hashtag, MaxPremiumTweetLength);
+        return BuildPremiumMegaPost(header, totalCount, rankedItems, url, hashtag, MaxPremiumTweetLength);
     }
 
     /// <summary>Formats a VS Code Insiders daily changelog as a thread for X/Twitter.</summary>
@@ -1670,6 +1807,7 @@ public partial class TweetFormatterService
         {
             var text = StripHtml(h3Match.Groups[1].Value).Trim();
             if (string.IsNullOrWhiteSpace(text) ||
+                ReleaseNoteStructureHelper.IsStructuralReleaseSectionHeading(text) ||
                 text.StartsWith("Other changes", StringComparison.OrdinalIgnoreCase) ||
                 text.StartsWith("New contributor", StringComparison.OrdinalIgnoreCase) ||
                 text.StartsWith("What", StringComparison.OrdinalIgnoreCase))

@@ -117,6 +117,7 @@ public class ReleaseSummarizerService
             {
                 var text = StripHtml(h3Match.Groups[1].Value).Trim();
                 if (!string.IsNullOrWhiteSpace(text) &&
+                    !ReleaseNoteStructureHelper.IsStructuralReleaseSectionHeading(text) &&
                     !text.StartsWith("Other changes", StringComparison.OrdinalIgnoreCase) &&
                     !text.StartsWith("New contributor", StringComparison.OrdinalIgnoreCase) &&
                     !text.StartsWith("What", StringComparison.OrdinalIgnoreCase))

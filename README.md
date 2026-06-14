@@ -17,7 +17,7 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 
 ## Features
 
-- Monitors GitHub Copilot CLI and Copilot SDK Atom feeds
+- Monitors GitHub Copilot CLI, Copilot SDK, and GitHub Copilot App Atom feeds
 - Polls feeds every 15 minutes
 - Filters out pre-release versions and submodule releases
 - **AI-powered threaded posts**: Uses Microsoft.Extensions.AI with Azure OpenAI to generate concise, emoji-enhanced threads with top highlights in the first post, grouped follow-up posts, and the release link in the final post
@@ -25,7 +25,7 @@ An Azure Function that monitors GitHub Copilot releases RSS feeds and automatica
 - **Deterministic fallback**: When AI is unavailable, threads are built from HTML-parsed release notes so posting always succeeds
 - Posts to Twitter/X using OAuth 1.0a authentication (with reply-chain thread support)
 - Cross-posts VS Code automation to Bluesky (with AT Protocol reply thread support)
-- Tracks state in Azure Blob Storage to prevent duplicate posts (separate state for CLI and SDK)
+- Tracks state in Azure Blob Storage to prevent duplicate posts (separate state for CLI, SDK, and App)
 - Respects platform character limits (280 for X, 300 for Bluesky) per post in the thread
 
 ## Thread Formats
@@ -65,6 +65,10 @@ https://github.com/.../releases/tag/v1.2.3
 ### Copilot SDK
 
 - Same structure as CLI, with `#GitHubCopilotSDK`
+
+### GitHub Copilot App
+
+- Same structure as CLI, with `#GitHubCopilotApp`
 
 ### VS Code Insiders Daily
 
@@ -150,7 +154,7 @@ Create a `local.settings.json` file in the project root (this file is git-ignore
 | `AI_MODEL` | Azure OpenAI deployment model name | No (default: `gpt-4o-mini`) |
 | `ENABLE_AI_SUMMARIES` | Enable AI-powered thread planning for timer functions | No (default: `false`) |
 | `AI_THREAD_PLAN_TIMEOUT_SECONDS` | Timeout (seconds) for AI thread-plan requests before fallback | No (default: `60`) |
-| `X_CLI_CHANGELOG_PREMIUM_MODE` | When `true`, posts CLI/SDK updates to X as one Premium mega-post instead of a thread | No (default: `false`) |
+| `X_CLI_CHANGELOG_PREMIUM_MODE` | When `true`, posts CLI/SDK/App updates to X as one Premium mega-post instead of a thread | No (default: `false`) |
 | `X_VSCODE_PREMIUM_MODE` | When `true`, posts VS Code updates to X as one Premium mega-post instead of a thread | No (default: `false`) |
 | `THREAD_MAX_POSTS` | Maximum number of posts per thread (including first and last) | No (default: `6`, minimum: `2`) |
 | `THREAD_TOP_HIGHLIGHTS` | Number of top highlights shown in the first post | No (default: `3`, minimum: `1`) |
@@ -273,14 +277,15 @@ curl "http://localhost:7071/api/cli-summary?version=v1.7.0&maxLength=500&format=
 
 **TestSummary**
 
-Preview a formatted thread for the latest CLI, SDK, or VS Code update (always uses AI when configured).
+Preview a formatted thread for the latest CLI, SDK, App, or VS Code update (always uses AI when configured).
 
-- Route: `GET /api/test-summary/{cli|sdk|vscode}`
+- Route: `GET /api/test-summary/{cli|sdk|app|vscode}`
 - For VS Code: optional `?date=yyyy-MM-dd` query parameter
 
 ```bash
 curl "http://localhost:7071/api/test-summary/cli"
 curl "http://localhost:7071/api/test-summary/sdk"
+curl "http://localhost:7071/api/test-summary/app"
 curl "http://localhost:7071/api/test-summary/vscode?date=2026-02-01"
 ```
 
@@ -331,10 +336,20 @@ curl "http://localhost:7071/api/vscode-insiders?date=full&format=text"
 - Schedule: `0 */15 * * * *` (every 15 minutes)
 - Feed: fixed `https://github.com/github/copilot-sdk/releases.atom`
 
+**AppReleaseNotifier**
+
+- Schedule: `0 */15 * * * *` (every 15 minutes)
+- Feed: fixed `https://github.com/github/app/releases.atom`
+
 **WeeklyCliRecap**
 
 - Schedule: `0 0 17,18 * * 6` (runs Saturday; posts at 10 AM PT)
 - Feed: fixed `https://github.com/github/copilot-cli/releases.atom`
+
+**WeeklyAppRecap**
+
+- Schedule: `0 0 17,18 * * 6` (runs Saturday; posts at 10 AM PT)
+- Feed: fixed `https://github.com/github/app/releases.atom`
 
 **VSCodeInsidersChangelogTweet**
 
@@ -359,6 +374,9 @@ auto-tweet-rss/
 ├── Functions/
 │   ├── ReleaseNotifierFunction.cs # Timer trigger for Copilot CLI (every 15 min)
 │   ├── SdkReleaseNotifierFunction.cs # Timer trigger for Copilot SDK (every 15 min)
+│   ├── AppReleaseNotifierFunction.cs # Timer trigger for GitHub Copilot App (every 15 min)
+│   ├── WeeklyCliRecapFunction.cs # Timer trigger for Copilot CLI weekly recap (Saturday)
+│   ├── WeeklyAppRecapFunction.cs # Timer trigger for GitHub Copilot App weekly recap (Saturday)
 │   ├── VSCodeInsidersChangelogTweetFunction.cs # Timer trigger for VS Code insiders changelog
 │   ├── VSCodeWeeklyRecapFunction.cs # Timer trigger for VS Code weekly recap (Saturday)
 │   └── TestSummaryFunction.cs     # HTTP endpoint for testing AI summaries

@@ -28,29 +28,41 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
 
     public static string BuildCliOrSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, string feedType)
     {
-        var isCliWeekly = string.Equals(feedType, "cli-weekly", StringComparison.OrdinalIgnoreCase);
-        var estimatedCharsPerItem = feedType.StartsWith("cli", StringComparison.OrdinalIgnoreCase) ? 50 : 40;
-        if (isCliWeekly)
+        var normalizedFeedType = feedType.ToLowerInvariant();
+        var isCliWeekly = normalizedFeedType == "cli-weekly";
+        var isAppWeekly = normalizedFeedType == "app-weekly";
+        var isCliOrApp = normalizedFeedType.StartsWith("cli", StringComparison.Ordinal)
+            || normalizedFeedType.StartsWith("app", StringComparison.Ordinal);
+        var estimatedCharsPerItem = isCliOrApp ? 50 : 40;
+        if (isCliWeekly || isAppWeekly)
         {
             estimatedCharsPerItem = 38;
         }
         var reserveForSuffix = totalItemCount > 5 ? 15 : 0;
         var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
-        maxItems = Math.Min(maxItems, isCliWeekly ? 12 : 10);
+        maxItems = Math.Min(maxItems, isCliWeekly || isAppWeekly ? 12 : 10);
         if (totalItemCount > 0)
         {
             maxItems = Math.Min(maxItems, totalItemCount);
         }
 
-        if (feedType == "cli-weekly")
+        if (normalizedFeedType == "cli-weekly")
         {
             return BuildCliWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
-        if (feedType == "cli")
+        if (normalizedFeedType == "app-weekly")
+        {
+            return BuildAppWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
+        }
+        if (normalizedFeedType == "cli")
         {
             return BuildCliUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
-        if (feedType == "cli-paragraph")
+        if (normalizedFeedType == "app")
+        {
+            return BuildAppUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
+        }
+        if (normalizedFeedType == "cli-paragraph")
         {
             return BuildCliParagraphUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, Math.Min(maxItems, 6));
         }
@@ -260,6 +272,80 @@ Requirements:
 
 Example output:
 Copilot CLI now ships faster completions and smarter context selection, making large repos feel more responsive. New navigation and help improvements streamline common workflows, while performance and reliability updates reduce friction across everyday commands.";
+
+    private static string BuildAppUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
+        $@"Summarize the following GitHub Copilot App release notes for {releaseTitle}.
+
+Release Content:
+{releaseContent}
+
+Total items in release: {totalItemCount}
+Target items to show: {targetItems}
+
+Note on content format: App releases commonly use section headings like Added, Changed, and Fixed with list items beneath each.
+Treat the section headings as structure only (not features), and prioritize the highest-impact list items.
+
+Requirements:
+- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
+- Include UP TO {targetItems} of the most important/high-impact updates that fit within the character limit
+- NEVER include user names, contributor names, or issue/PR numbers in the summary
+- NEVER include the @ character, URLs, links, or raw domain names in the summary
+- Focus ONLY on what changed and why it matters to users
+- Prefer plain text, but sprinkle in some emoji for the most impactful items
+- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines
+- EVERY highlight line MUST start with ""• ""
+- Only use emoji where it adds emphasis or clarity; never decorate every line
+- Each highlight should be on its own line
+- Keep each line concise (aim for 40-50 characters) to maximize count
+- CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
+- DO NOT include any markdown formatting or headers
+- DO NOT include the version number (it will be added separately)
+- Output ONLY the formatted highlight list, nothing else
+
+Example output format (when total items = 8, showing 5):
+• Faster project setup and cold-start handling
+• Better PR checks actions in the side panel
+• Safer handling for dangerous URL schemes
+• Lower idle GPU usage on macOS
+• More reliable deep-link foregrounding
+...and 3 more";
+
+    private static string BuildAppWeeklyUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
+        $@"Create a weekly recap summary of the following GitHub Copilot App release notes for {releaseTitle}.
+
+Release Content:
+{releaseContent}
+
+Total items in release window: {totalItemCount}
+Target items to show: {targetItems}
+
+Requirements:
+- Maximum length: {maxLength} characters (this is CRITICAL - count characters carefully)
+- Include UP TO {targetItems} of the most important/high-impact changes across the week
+- Deduplicate similar items across releases; focus on themes and top user-impact changes
+- Treat section headings like Added/Changed/Fixed as structure only; do not output them as items
+- NEVER include user names, contributor names, or issue/PR numbers in the summary
+- NEVER include the @ character, URLs, links, or raw domain names in the summary
+- DO NOT include version numbers or dates
+- Focus ONLY on what changed and why it matters
+- Prefer plain text, but sprinkle in some emoji for the most impactful items
+- Keep emoji selective and sparse: use them on roughly 15-20% of feature lines
+- EVERY highlight line MUST start with ""• ""
+- Only use emoji where it adds emphasis or clarity; never decorate every line
+- Each highlight should be on its own line
+- Keep each highlight line ultra concise (aim for 20-35 characters) to maximize count
+- Prefer short noun-phrase highlights over sentences
+- CRITICAL: If you show fewer items than the total ({totalItemCount} items), you MUST add ""...and X more"" as the FINAL line where X = items not shown
+- DO NOT include any markdown formatting or headers
+- Output ONLY the formatted highlight list, nothing else
+
+Example output format (when total items = 9, showing 5):
+• Faster session startup paths
+• New Background agents task pill
+• Better PR checks action workflow
+• Safer link handling in app surfaces
+• Reduced idle GPU usage on macOS
+...and 4 more";
 
     private static string BuildSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, int targetItems) =>
         $@"Summarize the following release notes for {releaseTitle}.
