@@ -28,10 +28,11 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
 
     public static string BuildCliOrSdkUserPrompt(string releaseTitle, string releaseContent, int maxLength, int totalItemCount, string feedType)
     {
-        var isCliWeekly = string.Equals(feedType, "cli-weekly", StringComparison.OrdinalIgnoreCase);
-        var isAppWeekly = string.Equals(feedType, "app-weekly", StringComparison.OrdinalIgnoreCase);
-        var isCliOrApp = feedType.StartsWith("cli", StringComparison.OrdinalIgnoreCase)
-            || feedType.StartsWith("app", StringComparison.OrdinalIgnoreCase);
+        var normalizedFeedType = feedType.ToLowerInvariant();
+        var isCliWeekly = normalizedFeedType == "cli-weekly";
+        var isAppWeekly = normalizedFeedType == "app-weekly";
+        var isCliOrApp = normalizedFeedType.StartsWith("cli", StringComparison.Ordinal)
+            || normalizedFeedType.StartsWith("app", StringComparison.Ordinal);
         var estimatedCharsPerItem = isCliOrApp ? 50 : 40;
         if (isCliWeekly || isAppWeekly)
         {
@@ -39,29 +40,29 @@ Keep the tone exciting and developer-friendly. Focus on what matters most to use
         }
         var reserveForSuffix = totalItemCount > 5 ? 15 : 0;
         var maxItems = Math.Max(3, (maxLength - reserveForSuffix) / estimatedCharsPerItem);
-        maxItems = Math.Min(maxItems, isCliWeekly ? 12 : 10);
+        maxItems = Math.Min(maxItems, isCliWeekly || isAppWeekly ? 12 : 10);
         if (totalItemCount > 0)
         {
             maxItems = Math.Min(maxItems, totalItemCount);
         }
 
-        if (feedType == "cli-weekly")
+        if (normalizedFeedType == "cli-weekly")
         {
             return BuildCliWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
-        if (feedType == "app-weekly")
+        if (normalizedFeedType == "app-weekly")
         {
             return BuildAppWeeklyUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
-        if (feedType == "cli")
+        if (normalizedFeedType == "cli")
         {
             return BuildCliUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
-        if (feedType == "app")
+        if (normalizedFeedType == "app")
         {
             return BuildAppUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, maxItems);
         }
-        if (feedType == "cli-paragraph")
+        if (normalizedFeedType == "cli-paragraph")
         {
             return BuildCliParagraphUserPrompt(releaseTitle, releaseContent, maxLength, totalItemCount, Math.Min(maxItems, 6));
         }
