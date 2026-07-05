@@ -20,6 +20,9 @@ public partial class TweetFormatterService
     private const string SdkHashtag = "#GitHubCopilotSDK";
     private const string AppHashtag = "#GitHubCopilotApp";
     private const string VSCodeHashtag = "#vscode";
+    private const string CliProductName = "Copilot CLI";
+    private const string AppProductName = "GitHub Copilot App";
+    private const string VSCodeProductName = "VS Code Insiders";
     
     // Truncation constants
     private const int MinTruncatedLineLength = 10; // Minimum meaningful characters to show after truncation
@@ -54,6 +57,9 @@ public partial class TweetFormatterService
 
     private static bool FitsWithinLimit(string text, int limit, bool useXWeightedLength)
         => useXWeightedLength ? XPostLengthHelper.FitsWithinLimit(text, limit) : text.Length <= limit;
+
+    private static string BuildWeeklyRecapTitle(string dateRange, string productName)
+        => $"🗓️ Weekly recap ({dateRange}) for {productName}";
 
     private static string TruncateToLimit(string text, int limit, bool useXWeightedLength)
     {
@@ -232,7 +238,7 @@ public partial class TweetFormatterService
         var releaseWord = releaseCount == 1 ? "release" : "releases";
         var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
         var header = string.Join("\n",
-            $"🗓️ Weekly recap ({dateRange})",
+            BuildWeeklyRecapTitle(dateRange, CliProductName),
             $"🚀 Releases: {releaseCount} {releaseWord}",
             $"🛠️ Improvements: {improvementCount} {improvementWord}");
 
@@ -315,7 +321,7 @@ public partial class TweetFormatterService
         string url,
         Func<int, Task<string>> generateSummary)
     {
-        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxTweetLength, UrlLength, generateSummary, useXWeightedLength: true);
+        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxTweetLength, UrlLength, generateSummary, VSCodeProductName, useXWeightedLength: true);
     }
 
     public async Task<string> FormatVSCodeWeeklyRecapForBlueskyAsync(
@@ -325,7 +331,7 @@ public partial class TweetFormatterService
         string url,
         Func<int, Task<string>> generateSummary)
     {
-        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxBlueskyLength, url.Length, generateSummary, useXWeightedLength: false);
+        return await FormatVSCodeWeeklyRecapPostAsync(featureCount, weekStartPacific, weekEndPacific, url, MaxBlueskyLength, url.Length, generateSummary, VSCodeProductName, useXWeightedLength: false);
     }
 
     private async Task<string> FormatVSCodeWeeklyRecapPostAsync(
@@ -336,12 +342,13 @@ public partial class TweetFormatterService
         int maxPostLength,
         int effectiveUrlLength,
         Func<int, Task<string>> generateSummary,
+        string productName,
         bool useXWeightedLength)
     {
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var featureWord = featureCount == 1 ? "feature" : "features";
         var header = string.Join("\n",
-            $"🗓️ Weekly recap ({dateRange})",
+            BuildWeeklyRecapTitle(dateRange, productName),
             $"✨ {featureCount} new {featureWord}");
 
         var highlightsPrefix = "Highlights:\n";
@@ -1108,7 +1115,8 @@ public partial class TweetFormatterService
             releaseTitle: "GitHub Copilot App weekly recap",
             feedType: "app-weekly",
             url: "https://github.com/github/app/releases",
-            hashtag: AppHashtag);
+            hashtag: AppHashtag,
+            productName: AppProductName);
 
     private async Task<IReadOnlyList<string>> FormatWeeklyCliRecapThreadInternalAsync(
         IReadOnlyList<ReleaseEntry> entries,
@@ -1129,7 +1137,8 @@ public partial class TweetFormatterService
             releaseTitle: "Copilot CLI weekly recap",
             feedType: "cli-weekly",
             url: "https://github.com/github/copilot-cli/releases",
-            hashtag: Hashtag);
+            hashtag: Hashtag,
+            productName: CliProductName);
 
     private async Task<IReadOnlyList<string>> FormatWeeklyReleaseRecapThreadInternalAsync(
         IReadOnlyList<ReleaseEntry> entries,
@@ -1142,14 +1151,15 @@ public partial class TweetFormatterService
         string releaseTitle,
         string feedType,
         string url,
-        string hashtag)
+        string hashtag,
+        string productName)
     {
         var releaseCount = entries.Count;
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var releaseWord = releaseCount == 1 ? "release" : "releases";
         var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
         var header = string.Join("\n",
-            $"🗓️ Weekly recap ({dateRange})",
+            BuildWeeklyRecapTitle(dateRange, productName),
             $"🚀 {releaseCount} {releaseWord}",
             $"🛠️ {improvementCount} {improvementWord}");
 
@@ -1211,7 +1221,8 @@ public partial class TweetFormatterService
             releaseTitle: "Copilot CLI weekly recap",
             feedType: "cli-weekly",
             url: "https://github.com/github/copilot-cli/releases",
-            hashtag: Hashtag);
+            hashtag: Hashtag,
+            productName: CliProductName);
 
     /// <summary>Formats a GitHub Copilot App weekly recap as a single Premium X mega-post.</summary>
     public Task<string> FormatWeeklyAppRecapPremiumPostForXAsync(
@@ -1229,7 +1240,8 @@ public partial class TweetFormatterService
             releaseTitle: "GitHub Copilot App weekly recap",
             feedType: "app-weekly",
             url: "https://github.com/github/app/releases",
-            hashtag: AppHashtag);
+            hashtag: AppHashtag,
+            productName: AppProductName);
 
     private async Task<string> FormatWeeklyReleaseRecapPremiumPostForXAsync(
         IReadOnlyList<ReleaseEntry> entries,
@@ -1240,14 +1252,15 @@ public partial class TweetFormatterService
         string releaseTitle,
         string feedType,
         string url,
-        string hashtag)
+        string hashtag,
+        string productName)
     {
         var releaseCount = entries.Count;
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var releaseWord = releaseCount == 1 ? "release" : "releases";
         var improvementWord = improvementCount == 1 ? "improvement" : "improvements";
         var header = string.Join("\n",
-            $"🗓️ Weekly recap ({dateRange})",
+            BuildWeeklyRecapTitle(dateRange, productName),
             $"🚀 {releaseCount} {releaseWord}",
             $"🛠️ {improvementCount} {improvementWord}");
 
@@ -1391,7 +1404,7 @@ public partial class TweetFormatterService
     {
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var featureWord = featureCount == 1 ? "feature" : "features";
-        var header = $"🗓️ Weekly recap ({dateRange})\n✨ {featureCount} new {featureWord}";
+        var header = $"{BuildWeeklyRecapTitle(dateRange, VSCodeProductName)}\n✨ {featureCount} new {featureWord}";
 
         var topFeatures = new List<string>();
         var enhancements = new List<string>();
@@ -1469,7 +1482,7 @@ public partial class TweetFormatterService
     {
         var dateRange = FormatDateRange(weekStartPacific, weekEndPacific);
         var featureWord = featureCount == 1 ? "feature" : "features";
-        var header = $"🗓️ Weekly recap ({dateRange})\n✨ {featureCount} new {featureWord}";
+        var header = $"{BuildWeeklyRecapTitle(dateRange, VSCodeProductName)}\n✨ {featureCount} new {featureWord}";
 
         // Use a generous length to capture all highlights for thread splitting
         const int ThreadSummaryLength = 800;
