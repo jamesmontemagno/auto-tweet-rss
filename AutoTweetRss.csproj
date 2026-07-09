@@ -8,7 +8,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="test-vscode-notes\**" />
+    <Compile Remove="AutoTweetRss.Tests\**" />
     <None Remove="test-vscode-notes\**" />
+    <None Remove="AutoTweetRss.Tests\**" />
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
