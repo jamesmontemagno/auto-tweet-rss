@@ -46,6 +46,15 @@ public partial class TweetFormatterService
     [GeneratedRegex(@"^[\p{So}\p{Sk}]")]
     private static partial Regex LeadingEmojiPattern();
 
+    [GeneratedRegex(@"\[(?<text>[^\]]+)\]\((?<url>https?://[^)\s]+)\)")]
+    private static partial Regex MarkdownLinkPattern();
+
+    [GeneratedRegex(@"<https?://[^>\s]+>")]
+    private static partial Regex AngleBracketUrlPattern();
+
+    [GeneratedRegex(@"(?:https?://|www\.)[^\s<>()\[\]]+")]
+    private static partial Regex BareUrlPattern();
+
     public TweetFormatterService(ILogger<TweetFormatterService> logger, ReleaseSummarizerService? releaseSummarizer = null)
     {
         _logger = logger;
@@ -518,24 +527,67 @@ public partial class TweetFormatterService
         var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         var lines = normalized.Split('\n', StringSplitOptions.None);
         var firstListLineIndex = FindFirstListLineIndex(lines);
+        var sanitizedLines = new List<string>(lines.Length);
 
         if (firstListLineIndex < 0)
         {
-            return normalized;
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed))
+                {
+                    if (sanitizedLines.Count > 0 && !string.IsNullOrWhiteSpace(sanitizedLines[^1]))
+                    {
+                        sanitizedLines.Add(string.Empty);
+                    }
+
+                    continue;
+                }
+
+                var sanitized = SanitizeVisibleLine(trimmed);
+                if (!string.IsNullOrWhiteSpace(sanitized))
+                {
+                    sanitizedLines.Add(sanitized);
+                }
+            }
+
+            while (sanitizedLines.Count > 0 && string.IsNullOrWhiteSpace(sanitizedLines[^1]))
+            {
+                sanitizedLines.RemoveAt(sanitizedLines.Count - 1);
+            }
+
+            return string.Join("\n", sanitizedLines);
         }
 
-        for (var index = firstListLineIndex; index < lines.Length; index++)
+        for (var index = 0; index < lines.Length; index++)
         {
             var trimmed = lines[index].Trim();
-            if (string.IsNullOrWhiteSpace(trimmed) || IsMoreIndicatorLine(trimmed) || SectionHeaderPattern().IsMatch(trimmed))
+            if (string.IsNullOrWhiteSpace(trimmed))
             {
+                if (sanitizedLines.Count > 0 && !string.IsNullOrWhiteSpace(sanitizedLines[^1]))
+                {
+                    sanitizedLines.Add(string.Empty);
+                }
+
                 continue;
             }
 
-            lines[index] = NormalizeListItem(trimmed);
+            var sanitized = index < firstListLineIndex || IsMoreIndicatorLine(trimmed) || SectionHeaderPattern().IsMatch(trimmed)
+                ? SanitizeVisibleLine(trimmed)
+                : NormalizeListItem(trimmed);
+
+            if (!string.IsNullOrWhiteSpace(sanitized))
+            {
+                sanitizedLines.Add(sanitized);
+            }
         }
 
-        return string.Join("\n", lines);
+        while (sanitizedLines.Count > 0 && string.IsNullOrWhiteSpace(sanitizedLines[^1]))
+        {
+            sanitizedLines.RemoveAt(sanitizedLines.Count - 1);
+        }
+
+        return string.Join("\n", sanitizedLines);
     }
 
     private static int FindFirstListLineIndex(string[] lines)
@@ -589,17 +641,44 @@ public partial class TweetFormatterService
             return trimmed;
         }
 
-        if (trimmed.StartsWith("• ", StringComparison.Ordinal))
+        var content = StripUrlsFromVisibleText(RemoveBulletPrefix(trimmed));
+        return string.IsNullOrWhiteSpace(content)
+            ? string.Empty
+            : $"• {content}";
+    }
+
+    private static List<string> NormalizeListItems(IEnumerable<string> items)
+        => items
+            .Select(NormalizeListItem)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .ToList();
+
+    private static string SanitizeVisibleLine(string line)
+    {
+        var trimmed = line.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || IsMoreIndicatorLine(trimmed))
         {
             return trimmed;
         }
 
-        if (trimmed.StartsWith("- ", StringComparison.Ordinal) || trimmed.StartsWith("* ", StringComparison.Ordinal))
+        return StripUrlsFromVisibleText(trimmed);
+    }
+
+    private static string StripUrlsFromVisibleText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
         {
-            return $"• {trimmed[2..].TrimStart()}";
+            return string.Empty;
         }
 
-        return $"• {trimmed}";
+        var withoutMarkdownLinks = MarkdownLinkPattern().Replace(text, "${text}");
+        var withoutAngleBracketUrls = AngleBracketUrlPattern().Replace(withoutMarkdownLinks, string.Empty);
+        var withoutUrls = BareUrlPattern().Replace(withoutAngleBracketUrls, string.Empty);
+        var normalizedWhitespace = Regex.Replace(withoutUrls, @"\s+", " ");
+        var normalizedPunctuation = Regex.Replace(normalizedWhitespace, @"\s+([,.;:!?])", "$1");
+        normalizedPunctuation = Regex.Replace(normalizedPunctuation, @"([(\[{])\s+", "$1");
+        normalizedPunctuation = Regex.Replace(normalizedPunctuation, @"\s+([)\]}])", "$1");
+        return normalizedPunctuation.Trim();
     }
 
     public string FormatSdkTweet(ReleaseEntry entry)
@@ -1044,18 +1123,16 @@ public partial class TweetFormatterService
             return BuildPremiumMegaPost(
                 header,
                 premiumPlan.TotalCount,
-                premiumPlan.TopFeatures.Select(NormalizeListItem).ToList(),
-                premiumPlan.Enhancements.Select(NormalizeListItem).ToList(),
-                premiumPlan.BugFixes.Select(NormalizeListItem).ToList(),
-                premiumPlan.Misc.Select(NormalizeListItem).ToList(),
+                NormalizeListItems(premiumPlan.TopFeatures),
+                NormalizeListItems(premiumPlan.Enhancements),
+                NormalizeListItems(premiumPlan.BugFixes),
+                NormalizeListItems(premiumPlan.Misc),
                 entry.Link,
                 hashtag,
                 MaxPremiumTweetLength);
         }
 
-        var rankedItems = (threadPlan?.Items?.Count > 0 ? threadPlan.Items : ExtractFeatureList(entry.Content))
-            .Select(NormalizeListItem)
-            .ToList();
+        var rankedItems = NormalizeListItems(threadPlan?.Items?.Count > 0 ? threadPlan.Items : ExtractFeatureList(entry.Content));
         var totalCount = threadPlan?.TotalCount > 0 ? threadPlan.TotalCount : rankedItems.Count;
 
         return BuildPremiumMegaPost(header, totalCount, rankedItems, entry.Link, hashtag, MaxPremiumTweetLength);
@@ -1079,7 +1156,7 @@ public partial class TweetFormatterService
             totalCount = allItems.Count;
         }
 
-        allItems = allItems.Select(NormalizeListItem).ToList();
+        allItems = NormalizeListItems(allItems);
         var topN = GetTopHighlightsCount();
         var highlights = allItems.Take(topN).ToList();
         var remaining = allItems.Skip(topN).ToList();
@@ -1196,7 +1273,7 @@ public partial class TweetFormatterService
             totalCount = allItems.Count;
         }
 
-        allItems = allItems.Select(NormalizeListItem).ToList();
+        allItems = NormalizeListItems(allItems);
         var topN = GetTopHighlightsCount();
         var highlights = allItems.Take(topN).ToList();
         var remaining = allItems.Skip(topN).ToList();
@@ -1294,18 +1371,16 @@ public partial class TweetFormatterService
             return BuildPremiumMegaPost(
                 header,
                 premiumPlan.TotalCount,
-                premiumPlan.TopFeatures.Select(NormalizeListItem).ToList(),
-                premiumPlan.Enhancements.Select(NormalizeListItem).ToList(),
-                premiumPlan.BugFixes.Select(NormalizeListItem).ToList(),
-                premiumPlan.Misc.Select(NormalizeListItem).ToList(),
+                NormalizeListItems(premiumPlan.TopFeatures),
+                NormalizeListItems(premiumPlan.Enhancements),
+                NormalizeListItems(premiumPlan.BugFixes),
+                NormalizeListItems(premiumPlan.Misc),
                 url,
                 hashtag,
                 MaxPremiumTweetLength);
         }
         var combinedForFallback = string.Join("\n", entries.Select(e => RemoveStaffFlagItems(e.Content)));
-        var rankedItems = (threadPlan?.Items?.Count > 0 ? threadPlan.Items : ExtractFeatureList(combinedForFallback))
-            .Select(NormalizeListItem)
-            .ToList();
+        var rankedItems = NormalizeListItems(threadPlan?.Items?.Count > 0 ? threadPlan.Items : ExtractFeatureList(combinedForFallback));
         var totalCount = threadPlan?.TotalCount > 0 ? threadPlan.TotalCount : rankedItems.Count;
 
         return BuildPremiumMegaPost(header, totalCount, rankedItems, url, hashtag, MaxPremiumTweetLength);
@@ -1541,15 +1616,14 @@ public partial class TweetFormatterService
     private static List<string> ExtractThreadFeatureLines(string summary, int totalCount)
     {
         var maxLines = totalCount > 0 ? totalCount : int.MaxValue;
-        var lines = summary
+        var lines = NormalizeListItems(summary
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.Trim())
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .Where(line => !IsMoreIndicatorLine(line))
             .Where(line => !IsThreadIntroLine(RemoveListDecorators(line)))
-            .Where(line => !SectionHeaderPattern().IsMatch(RemoveListDecorators(line)))
-            .Select(NormalizeListItem)
+            .Where(line => !SectionHeaderPattern().IsMatch(RemoveListDecorators(line))))
             .Take(maxLines)
             .ToList();
 
@@ -1563,7 +1637,7 @@ public partial class TweetFormatterService
             return [];
         }
 
-        var normalized = lines.Select(NormalizeListItem).ToList();
+        var normalized = NormalizeListItems(lines);
         if (normalized.Any(HasLeadingEmojiAfterBullet))
         {
             return normalized;
@@ -2090,6 +2164,11 @@ public partial class TweetFormatterService
         foreach (var item in items)
         {
             var line = NormalizeListItem(item);
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
             if (GetTextLength(sb.ToString(), useXWeightedLength: true) + GetTextLength(line + "\n", useXWeightedLength: true) > maxLength)
             {
                 sb.AppendLine("• ...and more");

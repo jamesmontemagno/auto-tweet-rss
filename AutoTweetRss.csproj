@@ -7,6 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="AutoTweetRss.Tests\**" />
+    <None Remove="AutoTweetRss.Tests\**" />
     <Compile Remove="test-vscode-notes\**" />
     <None Remove="test-vscode-notes\**" />
   </ItemGroup>
