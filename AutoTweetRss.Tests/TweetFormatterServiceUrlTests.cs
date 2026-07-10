@@ -42,6 +42,8 @@ public partial class TweetFormatterServiceUrlTests
         const string canonicalUrl = "https://code.visualstudio.com/updates/v1_100";
         const string summary = """
             Inline chat now supports links to https://example.com/inline-chat
+            - https://example.com/url-only
+            • https://example.com/also-url-only
             Terminal fixes are documented at https://docs.example.com/terminal
             """;
 
@@ -54,6 +56,7 @@ public partial class TweetFormatterServiceUrlTests
 
         AssertOnlyCanonicalUrl(string.Join("\n", posts), canonicalUrl);
         Assert.DoesNotContain("example.com", string.Join("\n", posts), StringComparison.OrdinalIgnoreCase);
+        AssertNoStandaloneListDecorators(posts);
     }
 
     [Fact]
@@ -96,5 +99,14 @@ public partial class TweetFormatterServiceUrlTests
         var urls = UrlPattern().Matches(text).Select(match => match.Value).ToList();
         var url = Assert.Single(urls);
         Assert.Equal(canonicalUrl, url);
+    }
+
+    private static void AssertNoStandaloneListDecorators(IEnumerable<string> posts)
+    {
+        var lines = posts
+            .SelectMany(post => post.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            .Select(line => line.Trim());
+
+        Assert.DoesNotContain(lines, line => line is "-" or "*" or "•");
     }
 }

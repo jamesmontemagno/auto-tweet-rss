@@ -108,7 +108,8 @@ public partial class TweetFormatterService
         }
 
         var withoutUrls = GeneratedTextUrlPattern().Replace(line, string.Empty);
-        return Regex.Replace(withoutUrls, @"[ \t]{2,}", " ").Trim();
+        var sanitized = Regex.Replace(withoutUrls, @"[ \t]{2,}", " ").Trim();
+        return sanitized is "-" or "*" or "•" ? string.Empty : sanitized;
     }
 
     private static List<string> NormalizeListItems(IEnumerable<string>? items)
@@ -1749,15 +1750,9 @@ public partial class TweetFormatterService
         // --- Follow-up posts ---
         foreach (var group in followUpGroups)
         {
-            var sanitizedGroup = SanitizeGeneratedText(group);
-            if (string.IsNullOrWhiteSpace(sanitizedGroup))
-            {
-                continue;
-            }
-
-            var post = FitsWithinLimit(sanitizedGroup, maxPostLength, useXWeightedLength)
-                ? sanitizedGroup
-                : TruncateToLimit(sanitizedGroup, maxPostLength, useXWeightedLength);
+            var post = FitsWithinLimit(group, maxPostLength, useXWeightedLength)
+                ? group
+                : TruncateToLimit(group, maxPostLength, useXWeightedLength);
             posts.Add(post);
         }
 
